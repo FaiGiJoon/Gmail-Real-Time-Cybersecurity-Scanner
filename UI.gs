@@ -22,12 +22,39 @@ function createSecurityCard(data) {
     .setBottomLabel(`Score: ${score.points}/100`)
     .setStartIcon(CardService.newIconImage().setIconUrl(scoreIcon)));
 
-  // Warnings
+  // Warnings / Security Details
   if (data.warnings && data.warnings.length > 0) {
     const warningText = data.warnings.map(w => `• ${w}`).join('\n');
     section.addWidget(CardService.newTextParagraph().setText(warningText));
   } else {
     section.addWidget(CardService.newTextParagraph().setText('No immediate threats detected.'));
+  }
+
+  // Mitigation Tools
+  const toolsSection = CardService.newCardSection().setHeader('Mitigation Tools');
+
+  toolsSection.addWidget(CardService.newTextButton()
+    .setText('Neutralize Threat')
+    .setBackgroundColor('#d93025')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setOnClickAction(CardService.newAction()
+      .setFunctionName('confirmNeutralize')
+      .setParameters({messageId: data.messageId})));
+
+  if (score.level === CONSTANTS.THREAT_LEVELS.RED) {
+    toolsSection.addWidget(CardService.newTextButton()
+      .setText('View Sanitized Content')
+      .setOnClickAction(CardService.newAction()
+        .setFunctionName('viewSanitizedContent')
+        .setParameters({messageId: data.messageId})));
+  }
+
+  if (!data.isDeepScan) {
+    toolsSection.addWidget(CardService.newTextButton()
+      .setText('Deep Scan (Unshorten URLs)')
+      .setOnClickAction(CardService.newAction()
+        .setFunctionName('handleDeepScan')
+        .setParameters({messageId: data.messageId})));
   }
 
   // Details
@@ -48,6 +75,7 @@ function createSecurityCard(data) {
   return CardService.newCardBuilder()
     .setHeader(cardHeader)
     .addSection(section)
+    .addSection(toolsSection)
     .addSection(detailsSection)
     .build();
 }
@@ -69,18 +97,22 @@ function calculateSecurityScore(data) {
 
   if (!data.senderVerified) points -= 30;
 
-  points -= (warnings.length * 20);
+  // Specific high-risk detections
+  const hasPhishingLink = warnings.some(w => w.includes('Link text mismatch') || w.includes('Malicious URL') || w.includes('homograph'));
+  if (hasPhishingLink) points -= 60;
+
+  points -= (warnings.filter(w => !w.includes('Link text mismatch') && !w.includes('Malicious URL') && !w.includes('homograph')).length * 20);
 
   points = Math.max(0, points);
 
-  let level = 'Green';
-  let status = 'Secure';
-  if (points < 40) {
-    level = 'Red';
-    status = 'High Risk';
+  let level = CONSTANTS.THREAT_LEVELS.GREEN;
+  let status = CONSTANTS.STATUS_TEXT.SECURE;
+  if (points < 40 || hasPhishingLink) {
+    level = CONSTANTS.THREAT_LEVELS.RED;
+    status = CONSTANTS.STATUS_TEXT.HIGH_RISK;
   } else if (points < 80) {
-    level = 'Yellow';
-    status = 'Caution';
+    level = CONSTANTS.THREAT_LEVELS.YELLOW;
+    status = CONSTANTS.STATUS_TEXT.CAUTION;
   }
 
   return { points, level, status };
@@ -91,8 +123,8 @@ function calculateSecurityScore(data) {
  */
 function getScoreIcon(level) {
   switch (level) {
-    case 'Red': return 'https://www.gstatic.com/images/icons/material/system/1x/report_problem_red_24dp.png';
-    case 'Yellow': return 'https://www.gstatic.com/images/icons/material/system/1x/warning_amber_24dp.png';
-    default: return 'https://www.gstatic.com/images/icons/material/system/1x/check_circle_green_24dp.png';
+    case CONSTANTS.THREAT_LEVELS.RED: return CONSTANTS.ICONS.RED;
+    case CONSTANTS.THREAT_LEVELS.YELLOW: return CONSTANTS.ICONS.YELLOW;
+    default: return CONSTANTS.ICONS.GREEN;
   }
 }

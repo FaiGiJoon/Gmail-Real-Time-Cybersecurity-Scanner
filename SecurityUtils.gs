@@ -2,16 +2,13 @@
  * Helper functions for cybersecurity scanning.
  */
 
-const SAFE_BROWSING_API_KEY = 'YOUR_SAFE_BROWSING_API_KEY'; // Placeholder
-
 /**
  * Extracts all URLs from the email body.
  * @param {string} body The email body.
  * @return {string[]} Array of extracted URLs.
  */
 function extractUrls(body) {
-  const urlRegex = /https?:\/\/[^\s<"']+/g;
-  const urls = body.match(urlRegex) || [];
+  const urls = body.match(CONSTANTS.URL_REGEX) || [];
   return [...new Set(urls)]; // Deduplicate
 }
 
@@ -22,14 +19,15 @@ function extractUrls(body) {
  */
 function extractHtmlLinks(html) {
   const links = [];
-  const linkRegex = /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1[^>]*?>(.*?)<\/a>/gi;
   let match;
-  while ((match = linkRegex.exec(html)) !== null) {
+  while ((match = CONSTANTS.LINK_REGEX.exec(html)) !== null) {
     links.push({
       url: match[2],
       text: match[3].replace(/<[^>]*>?/gm, '').trim() // Strip nested HTML from text
     });
   }
+  // Reset regex state since it's global
+  CONSTANTS.LINK_REGEX.lastIndex = 0;
   return links;
 }
 
@@ -40,15 +38,24 @@ function extractHtmlLinks(html) {
  * @return {boolean} True if they appear to mismatch suspiciously.
  */
 function isLinkTextMismatch(text, url) {
-  const urlInTextMatch = text.match(/https?:\/\/([^\s/]+)|[a-z0-9.-]+\.[a-z]{2,}/i);
+  // Look for anything that looks like a domain or URL in the text
+  const domainRegex = /(?:https?:\/\/)?(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{2,})/i;
+  const urlInTextMatch = text.match(domainRegex);
   if (!urlInTextMatch) return false;
 
   try {
-    const textDomain = urlInTextMatch[0].includes('://') ? new URL(urlInTextMatch[0]).hostname : urlInTextMatch[0];
-    const actualDomain = new URL(url).hostname;
+    const textDomain = urlInTextMatch[1].toLowerCase();
+    const actualDomainMatch = url.match(domainRegex);
+    if (!actualDomainMatch) return false;
+
+    const actualDomain = actualDomainMatch[1].toLowerCase();
     
-    // Normalize and compare
-    return !actualDomain.endsWith(textDomain.replace('www.', ''));
+    // Check for exact match or proper subdomain
+    if (actualDomain === textDomain) return false;
+    if (actualDomain.endsWith('.' + textDomain)) return false;
+    if (textDomain.endsWith('.' + actualDomain)) return false;
+
+    return true;
   } catch (e) {
     return false;
   }
@@ -70,17 +77,25 @@ function isHomograph(url) {
 
 /**
  * Checks URLs against Google Safe Browsing API.
+ * Performs a passive lookup without following redirects.
  * @param {string[]} urls Array of URLs.
  * @return {Object} Results from Safe Browsing.
  */
 function checkSafeBrowsing(urls) {
   if (!urls || urls.length === 0) return {};
-  if (SAFE_BROWSING_API_KEY === 'YOUR_SAFE_BROWSING_API_KEY') {
+
+  let apiKey = CONSTANTS.SAFE_BROWSING_API_KEY;
+  // Try to get from Script Properties if placeholder is still there
+  if (apiKey === 'YOUR_SAFE_BROWSING_API_KEY') {
+    apiKey = PropertiesService.getScriptProperties().getProperty('SAFE_BROWSING_API_KEY');
+  }
+
+  if (!apiKey) {
     console.warn('Safe Browsing API Key not configured.');
     return {};
   }
 
-  const endpoint = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${SAFE_BROWSING_API_KEY}`;
+  const endpoint = `${CONSTANTS.SAFE_BROWSING_ENDPOINT}?key=${apiKey}`;
   const payload = {
     client: {
       clientId: "cybersecurity-scanner-addon",
@@ -118,7 +133,8 @@ function checkSafeBrowsing(urls) {
 function unshortenUrl(url) {
   const shorteners = ['bit.ly', 'goo.gl', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly'];
   try {
-    const hostname = new URL(url).hostname;
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
     if (!shorteners.some(s => hostname.includes(s))) {
       return url;
     }
