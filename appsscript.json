@@ -1,0 +1,29 @@
+{
+  "timeZone": "GMT",
+  "dependencies": {
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.addons.execute",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Cybersecurity Scanner",
+      "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/security_black_24dp.png",
+      "layoutProperties": {
+        "primaryColor": "#4285f4"
+      }
+    },
+    "gmail": {
+      "contextualTriggers": [
+        {
+          "unconditional": {},
+          "onTriggerFunction": "getContextualAddOn"
+        }
+      ]
+    }
+  }
+}
