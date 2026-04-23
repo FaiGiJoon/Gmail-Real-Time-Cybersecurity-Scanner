@@ -25,5 +25,9 @@ const CONSTANTS = {
     RED: 'https://www.gstatic.com/images/icons/material/system/1x/report_problem_red_24dp.png',
     YELLOW: 'https://www.gstatic.com/images/icons/material/system/1x/warning_amber_24dp.png',
     GREEN: 'https://www.gstatic.com/images/icons/material/system/1x/check_circle_green_24dp.png'
-  }
+  },
+
+  TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook'],
+  URGENT_KEYWORDS: ['urgent', 'wire transfer', 'account suspended', 'immediate action', 'password reset', 'verify account', 'unusual activity'],
+  SECURITY_REVIEW_LABEL: 'Security Review'
 };
