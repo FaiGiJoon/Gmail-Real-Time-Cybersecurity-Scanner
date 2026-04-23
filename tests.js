@@ -10,6 +10,10 @@ function runTests() {
   testCalculateSecurityScore();
   testVerifySender();
   testNeutralizeLogic();
+  testTyposquatted();
+  testBEC();
+  testLinguisticThreats();
+  testTLSCheck();
 
   console.log('All tests completed.');
 }
@@ -114,7 +118,9 @@ function testNeutralizeLogic() {
   let readMarked = false;
 
   const mockMessage = {
-    moveToSpam: () => { spamMoved = true; },
+    getThread: () => ({
+      moveToSpam: () => { spamMoved = true; }
+    }),
     markRead: () => { readMarked = true; }
   };
 
@@ -132,4 +138,79 @@ function testNeutralizeLogic() {
   }
 
   globalThis.GmailApp = originalGmailApp;
+}
+
+function testTyposquatted() {
+  console.log('Testing isTyposquatted...');
+  const cases = [
+    { url: 'https://google.com', expected: null },
+    { url: 'https://g0ogle.com', expected: 'google' },
+    { url: 'https://micros0ft.com', expected: 'microsoft' },
+    { url: 'https://pay-pal.com', expected: 'paypal' },
+    { url: 'https://amaz0n.co.uk', expected: 'amazon' },
+    { url: 'https://apple-support.com', expected: null } // distance > 2
+  ];
+
+  cases.forEach(c => {
+    const result = isTyposquatted(c.url);
+    if (result !== c.expected) {
+      console.error(`FAILED: url="${c.url}". Expected ${c.expected}, got ${result}`);
+    } else {
+      console.log(`PASSED: url="${c.url}"`);
+    }
+  });
+}
+
+function testBEC() {
+  console.log('Testing checkBEC...');
+
+  const mockMessage = (from, replyTo) => ({
+    getFrom: () => from,
+    getReplyTo: () => replyTo
+  });
+
+  const cases = [
+    { from: 'CEO <ceo@company.com>', replyTo: 'ceo@company.com', expected: false },
+    { from: 'CEO <ceo@company.com>', replyTo: 'attacker@evil.com', expected: true },
+    { from: 'support@paypal.com', replyTo: 'support@paypal.com', expected: false },
+    { from: 'support@paypal.com', replyTo: 'paypal-support@gmail.com', expected: true }
+  ];
+
+  cases.forEach(c => {
+    const result = checkBEC(mockMessage(c.from, c.replyTo));
+    if (result !== c.expected) {
+      console.error(`FAILED: from="${c.from}", replyTo="${c.replyTo}". Expected ${c.expected}, got ${result}`);
+    } else {
+      console.log(`PASSED: BEC check`);
+    }
+  });
+}
+
+function testLinguisticThreats() {
+  console.log('Testing detectLinguisticThreats...');
+  const body = 'This is an urgent request for a wire transfer due to account suspended. Immediate action required.';
+  const threats = detectLinguisticThreats(body);
+  const expected = ['urgent', 'wire transfer', 'account suspended', 'immediate action'];
+
+  if (threats.length === expected.length && expected.every(t => threats.includes(t))) {
+    console.log('PASSED: Linguistic Threats');
+  } else {
+    console.error(`FAILED: Linguistic Threats. Got: ${threats}`);
+  }
+}
+
+function testTLSCheck() {
+  console.log('Testing checkTLS...');
+  const mockMessage = (raw) => ({
+    getRawContent: () => raw
+  });
+
+  const tlsRaw = 'Received: from mail.example.com by mx.google.com with ESMTPS id ...\r\n (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);';
+  const noTlsRaw = 'Received: from mail.example.com by mx.google.com with SMTP id ...;';
+
+  if (checkTLS(mockMessage(tlsRaw)) === true && checkTLS(mockMessage(noTlsRaw)) === false) {
+    console.log('PASSED: TLS Check');
+  } else {
+    console.error('FAILED: TLS Check');
+  }
 }
