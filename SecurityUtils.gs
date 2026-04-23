@@ -126,28 +126,136 @@ function checkSafeBrowsing(urls) {
 }
 
 /**
- * Unmasks shortened URLs.
+ * Unmasks shortened URLs recursively using a loop.
  * @param {string} url The URL to unmask.
- * @return {string} The final destination URL.
+ * @return {string[]} All URLs in the redirect chain.
  */
-function unshortenUrl(url) {
-  const shorteners = ['bit.ly', 'goo.gl', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly'];
+function unshortenUrlChain(url) {
+  const chain = [url];
+  let currentUrl = url;
+  let depth = 0;
+  const maxDepth = 5;
+
+  while (depth < maxDepth) {
+    try {
+      const response = UrlFetchApp.fetch(currentUrl, {
+        followRedirects: false,
+        muteHttpExceptions: true
+      });
+      const location = response.getHeaders()['Location'];
+
+      if (location && location !== currentUrl && !chain.includes(location)) {
+        currentUrl = location;
+        chain.push(currentUrl);
+        depth++;
+      } else {
+        break;
+      }
+    } catch (e) {
+      break;
+    }
+  }
+  return chain;
+}
+
+/**
+ * Checks for typosquatting by comparing against known brands.
+ * @param {string} url The URL to check.
+ * @return {string|null} The brand being impersonated, or null.
+ */
+function isTyposquatted(url) {
   try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
-    if (!shorteners.some(s => hostname.includes(s))) {
-      return url;
+    const domain = new URL(url).hostname.toLowerCase();
+    // Simplified main domain extraction (gets the part before the TLD)
+    const parts = domain.split('.');
+    if (parts.length < 2) return null;
+
+    // Handle some common multi-part TLDs like .co.uk
+    let mainDomain = parts[parts.length - 2];
+    if (['co', 'com', 'org', 'net', 'edu', 'gov'].includes(mainDomain) && parts.length > 2) {
+      mainDomain = parts[parts.length - 3];
     }
 
-    const response = UrlFetchApp.fetch(url, {
-      followRedirects: false,
-      muteHttpExceptions: true
-    });
-    const location = response.getHeaders()['Location'];
-    return location || url;
-  } catch (e) {
-    return url;
+    for (const brand of CONSTANTS.TYPOSQUAT_BRANDS) {
+      if (mainDomain === brand) continue;
+
+      const distance = levenshteinDistance(mainDomain, brand);
+      // If distance is small (1 or 2 edits), it might be typosquatted
+      if (distance > 0 && distance <= 2) {
+        return brand;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/**
+ * Levenshtein distance algorithm.
+ */
+function levenshteinDistance(a, b) {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
   }
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Checks for BEC by comparing From and Reply-To headers.
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message
+ * @return {boolean} True if suspicious.
+ */
+function checkBEC(message) {
+  const from = message.getFrom();
+  const replyTo = message.getReplyTo();
+
+  if (!replyTo || from === replyTo) return false;
+
+  const getDomain = (email) => {
+    const match = email.match(/<(.+)>|([^\s]+@[^\s]+)/);
+    const addr = match ? (match[1] || match[2]) : email;
+    return addr.split('@').pop().toLowerCase();
+  };
+
+  const fromDomain = getDomain(from);
+  const replyToDomain = getDomain(replyTo);
+
+  return fromDomain !== replyToDomain;
+}
+
+/**
+ * Detects linguistic threats in message body.
+ * @param {string} body
+ * @return {string[]} Detected keywords.
+ */
+function detectLinguisticThreats(body) {
+  const lowerBody = body.toLowerCase();
+  return CONSTANTS.URGENT_KEYWORDS.filter(keyword => lowerBody.includes(keyword));
+}
+
+/**
+ * Checks if email was sent via TLS.
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message
+ * @return {boolean} True if TLS was used.
+ */
+function checkTLS(message) {
+  const raw = message.getRawContent();
+  // Look for "version=TLS" or "with ESMTPS" or similar in Received headers
+  const receivedHeaders = raw.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
+  return receivedHeaders.some(header => /TLS|ESMTPS/i.test(header));
 }
 
 /**

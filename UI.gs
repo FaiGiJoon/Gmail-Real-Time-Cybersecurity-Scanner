@@ -51,11 +51,23 @@ function createSecurityCard(data) {
 
   if (!data.isDeepScan) {
     toolsSection.addWidget(CardService.newTextButton()
-      .setText('Deep Scan (Unshorten URLs)')
+      .setText('Deep Scan (Recursive Unshorten)')
       .setOnClickAction(CardService.newAction()
         .setFunctionName('handleDeepScan')
         .setParameters({messageId: data.messageId})));
   }
+
+  toolsSection.addWidget(CardService.newTextButton()
+    .setText('Quarantine Message')
+    .setOnClickAction(CardService.newAction()
+      .setFunctionName('handleQuarantine')
+      .setParameters({messageId: data.messageId})));
+
+  toolsSection.addWidget(CardService.newTextButton()
+    .setText('Report Phishing')
+    .setOnClickAction(CardService.newAction()
+      .setFunctionName('handleReportPhishing')
+      .setParameters({messageId: data.messageId})));
 
   // Details
   const detailsSection = CardService.newCardSection().setHeader('Scan Details').setCollapsible(true);
@@ -63,6 +75,12 @@ function createSecurityCard(data) {
   detailsSection.addWidget(CardService.newDecoratedText()
     .setText('Authentication')
     .setBottomLabel(`SPF: ${data.auth.spf}, DKIM: ${data.auth.dkim}, DMARC: ${data.auth.dmarc}`));
+
+  const tlsText = data.isTls ? 'Encrypted (TLS)' : 'Unencrypted (No TLS)';
+  detailsSection.addWidget(CardService.newDecoratedText()
+    .setText('Transmission')
+    .setBottomLabel(tlsText)
+    .setStartIcon(CardService.newIconImage().setIconUrl(data.isTls ? CONSTANTS.ICONS.GREEN : CONSTANTS.ICONS.YELLOW)));
 
   detailsSection.addWidget(CardService.newDecoratedText()
     .setText('Links Found')

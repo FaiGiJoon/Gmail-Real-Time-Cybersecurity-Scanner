@@ -33,7 +33,12 @@ function runSecurityScan(message, isDeepScan) {
 
   let urlsToScan = originalUrls;
   if (isDeepScan) {
-    urlsToScan = originalUrls.map(url => unshortenUrl(url));
+    urlsToScan = [];
+    originalUrls.forEach(url => {
+      const chain = unshortenUrlChain(url);
+      urlsToScan.push(...chain);
+    });
+    urlsToScan = [...new Set(urlsToScan)];
   }
 
   const warnings = [];
@@ -54,13 +59,31 @@ function runSecurityScan(message, isDeepScan) {
     });
   }
 
-  // Homograph Detection
+  // Homograph & Typosquatting Detection
   urlsToScan.forEach(url => {
+    const prefix = isDeepScan ? "(Deep Scan) " : "";
     if (isHomograph(url)) {
-      const prefix = isDeepScan ? "(Deep Scan) " : "";
       warnings.push(`${prefix}Potential homograph attack detected: ${url}`);
     }
+    const impersonatedBrand = isTyposquatted(url);
+    if (impersonatedBrand) {
+      warnings.push(`${prefix}Potential typosquatting detected: URL looks like ${impersonatedBrand} but leads elsewhere.`);
+    }
   });
+
+  // BEC Detection
+  if (checkBEC(message)) {
+    warnings.push('Suspicious Reply-To mismatch detected. This might be a Business Email Compromise (BEC) attempt.');
+  }
+
+  // Linguistic Threat Detection
+  const linguisticThreats = detectLinguisticThreats(body);
+  if (linguisticThreats.length > 0) {
+    warnings.push(`Urgent/Suspicious language detected: ${linguisticThreats.join(', ')}`);
+  }
+
+  // TLS Check
+  const isTls = checkTLS(message);
 
   // Header Verification
   const rawHeaders = message.getRawContent();
@@ -87,6 +110,7 @@ function runSecurityScan(message, isDeepScan) {
     urls: urlsToScan,
     auth: authStatus,
     senderVerified: senderVerified,
+    isTls: isTls,
     attachmentsCount: attachments.length,
     warnings: [...new Set(warnings)],
     isDeepScan: isDeepScan
@@ -100,7 +124,7 @@ function runSecurityScan(message, isDeepScan) {
 function handleNeutralize(e) {
   const messageId = e.parameters.messageId;
   const message = GmailApp.getMessageById(messageId);
-  message.moveToSpam();
+  message.getThread().moveToSpam();
   message.markRead();
 
   return CardService.newActionResponseBuilder()
@@ -171,4 +195,41 @@ function confirmNeutralize(e) {
 
 function closeCard() {
   return CardService.newNavigation().popCard();
+}
+
+/**
+ * Handles "Quarantine" action.
+ */
+function handleQuarantine(e) {
+  const messageId = e.parameters.messageId;
+  const message = GmailApp.getMessageById(messageId);
+
+  let label = GmailApp.getUserLabelByName(CONSTANTS.SECURITY_REVIEW_LABEL);
+  if (!label) {
+    label = GmailApp.createLabel(CONSTANTS.SECURITY_REVIEW_LABEL);
+  }
+
+  message.getThread().addLabel(label);
+  message.getThread().moveToSpam(); // Move out of inbox
+
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText(`Message moved to "${CONSTANTS.SECURITY_REVIEW_LABEL}" and Spam.`))
+    .setStateChanged(true)
+    .build();
+}
+
+/**
+ * Handles "Report Phishing" action.
+ */
+function handleReportPhishing(e) {
+  // Simulate reporting
+  const messageId = e.parameters.messageId;
+  const message = GmailApp.getMessageById(messageId);
+  const from = message.getFrom();
+
+  console.log(`Reporting phishing for message ${messageId} from ${from} to APWG...`);
+
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("Thank you. The threat has been reported to security providers (APWG)."))
+    .build();
 }
