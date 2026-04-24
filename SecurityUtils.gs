@@ -1,5 +1,6 @@
 /**
  * Helper functions for cybersecurity scanning.
+ * Version: 1.1.0 - Enhanced Security Features
  */
 
 /**

@@ -1,5 +1,6 @@
 /**
  * UI functions for the Gmail Add-on.
+ * Version: 1.1.0 - Enhanced Security Features
  */
 
 /**
