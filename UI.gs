@@ -100,7 +100,8 @@ function createSecurityCard(data) {
 }
 
 /**
- * Calculates a security score and level.
+ * Calculates a security score and level using a composite formula.
+ * $S = 100 - \sum w_i \cdot I_i$
  * @param {Object} data
  * @return {Object} Score details.
  */
@@ -108,25 +109,49 @@ function calculateSecurityScore(data) {
   let points = 100;
   const warnings = data.warnings || [];
 
+  // DMARC Failure (-40)
   if (data.auth.dmarc === 'fail') points -= 40;
   else if (data.auth.dmarc === 'none' || data.auth.dmarc === 'unknown') points -= 10;
 
+  // SPF/DKIM Failures (-10 each)
   if (data.auth.spf === 'fail') points -= 10;
   if (data.auth.dkim === 'fail') points -= 10;
 
+  // Sender Mismatch (-30)
   if (!data.senderVerified) points -= 30;
 
-  // Specific high-risk detections
+  // Phishing/Malicious Link detection (-60)
   const hasPhishingLink = warnings.some(w => w.includes('Link text mismatch') || w.includes('Malicious URL') || w.includes('homograph'));
   if (hasPhishingLink) points -= 60;
 
-  points -= (warnings.filter(w => !w.includes('Link text mismatch') && !w.includes('Malicious URL') && !w.includes('homograph')).length * 20);
+  // Quishing (QR Malicious Link) Deduction (-25)
+  if (data.maliciousQrUrls && data.maliciousQrUrls.length > 0) {
+    points -= CONSTANTS.QR_THREAT_PENALTY;
+  }
+
+  // Linguistic Threat Weights
+  if (data.linguisticThreats) {
+    data.linguisticThreats.forEach(threat => {
+      points -= threat.weight;
+    });
+  }
+
+  // General warnings deduction (-20 each, excluding those already penalized)
+  const generalWarnings = warnings.filter(w =>
+    !w.includes('Link text mismatch') &&
+    !w.includes('Malicious URL') &&
+    !w.includes('homograph') &&
+    !w.includes('DMARC') &&
+    !w.includes('From') &&
+    !w.includes('QR Code detected')
+  );
+  points -= (generalWarnings.length * 20);
 
   points = Math.max(0, points);
 
   let level = CONSTANTS.THREAT_LEVELS.GREEN;
   let status = CONSTANTS.STATUS_TEXT.SECURE;
-  if (points < 40 || hasPhishingLink) {
+  if (points < 40 || hasPhishingLink || (data.maliciousQrUrls && data.maliciousQrUrls.length > 0)) {
     level = CONSTANTS.THREAT_LEVELS.RED;
     status = CONSTANTS.STATUS_TEXT.HIGH_RISK;
   } else if (points < 80) {
