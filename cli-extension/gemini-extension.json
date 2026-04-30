@@ -1,0 +1,17 @@
+{
+  "name": "gmail-security-scanner",
+  "version": "1.0.0",
+  "manifest_version": "1.0.0",
+  "description": "Enterprise-grade Gmail security auditing via Gemini CLI.",
+  "scopes": [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify"
+  ],
+  "mcp_servers": [
+    {
+      "name": "gmail-security-server",
+      "command": "node",
+      "args": ["index.js"]
+    }
+  ]
+}

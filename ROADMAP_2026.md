@@ -1,7 +1,7 @@
 # 2026 Threat Mitigation Roadmap: Gmail Cybersecurity Scanner
 
 ## 1. Executive Summary
-As we approach 2026, the email threat landscape is characterized by hyper-personalized, AI-orchestrated attacks that bypass traditional signature-based and heuristic defenses. This roadmap outlines five advanced features designed to maintain defensive parity against these evolving vectors. Each feature is analyzed through its technical implementation and the specific threat it is engineered to negate.
+As we approach 2026, the email threat landscape is characterized by hyper-personalized, AI-orchestrated attacks that bypass traditional signature-based and heuristic defenses. This roadmap outlines six advanced features designed to maintain defensive parity against these evolving vectors. Each feature is analyzed through its technical implementation and the specific threat it is engineered to negate.
 
 ## 2. Advanced Feature Roadmap
 
@@ -65,6 +65,17 @@ Integration with a cloud-native sandbox (e.g., **Any.Run** or **VirusTotal Enter
 2.  **Dynamic Interaction:** The sandbox executes the document and "follows" all internal URIs.
 3.  **Behavioral Artifacting:** The scanner monitors for network requests, process spawning, or credential-harvesting UI patterns at the destination URI.
 4.  **Reputation Feedback:** The resulting "Behavioral Score" is fed back to the Gmail sidebar to inform the user.
+
+---
+
+### 2.6 Gemini CLI Extension (MCP Integration)
+**Threat Negated:** **Blind-Spot Latency**—Traditional UI-based scanners require manual interaction. The CLI extension allows for automated, scriptable threat hunting across an entire inbox.
+
+**Technical Implementation:**
+A Node.js-based Model Context Protocol (MCP) server that bridges the Gmail API with the Gemini CLI.
+1.  **Thread Serialization:** Pulls thread metadata and snippets for rapid auditing.
+2.  **Remote Scoring:** Replicates the Apps Script scoring logic in a local Node.js environment for high-speed analysis.
+3.  **Terminal Mitigation:** Provides `quarantine_thread` and `neutralize_thread` tools that can be triggered by the AI during a terminal-based hunt.
 
 ## 3. Implementation & Operational Timeline
 *   **Phase 1 (Q1 2026):** Deployment of OCR-based Quishing detection and Relay Auditing.

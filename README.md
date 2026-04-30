@@ -22,6 +22,8 @@ The system is architected as a serverless Google Workspace Add-on, ensuring low 
     Where $w_i$ is the weight of the $i$-th security indicator and $I_i$ is a boolean flag (0 or 1) representing the presence of a threat.
     The data is then rendered via a contextual Card Service UI, providing the user with real-time "Neutralize" and "Quarantine" capabilities.
 
+5.  **Gemini CLI Extension (Terminal Audit):** A Node.js-based extension for the Gemini CLI using the Model Context Protocol (MCP). It allows security researchers to hunt threats, analyze threads, and quarantine malicious emails directly from the terminal.
+
 ## 2. Threat Coverage Matrix
 
 The following matrix defines the scanner’s current and roadmap capabilities across 12 critical cybercrime vectors:
@@ -33,7 +35,7 @@ The following matrix defines the scanner’s current and roadmap capabilities ac
 | **Whaling** | Executive Impersonation Guard | Heuristic matching of display names against organizational directory patterns and RFC 5322 address validation. |
 | **BEC** | Cross-Header Discrepancy | Strict logical verification of domain parity: $Domain(From) \equiv Domain(ReplyTo)$. |
 | **Malware Delivery** | Multi-Stage File Inspection | Extension blacklisting (EXE, SCR, VBS) + Encrypted ZIP detection via `Utilities.unzip` error handling. |
-| **Quishing** | Visual Link Extraction | (Roadmap) Integration with Google Cloud Vision for OCR-based QR code decoding. |
+| **Quishing** | Visual Link Extraction | Integration with Google Cloud Vision for OCR-based QR code decoding. Extracted URLs are recursively analyzed. |
 | **Account Hijacking** | Auth Result Enforcement | State machine validation of DMARC, SPF, and DKIM status within the `Authentication-Results` header. |
 | **Identity Theft** | PII Exfiltration Monitoring | Pattern-matching for Social Security Numbers, Credit Card data, and other sensitive PII patterns. |
 | **Filter Rule Attacks** | Delivery Path Auditing | Analyzing `Received` headers to detect anomalous hop counts or suspicious intermediary relays. |
@@ -55,7 +57,8 @@ The security score is a weighted metric designed to provide a "Red/Yellow/Green"
 *   **DMARC Failure:** $-40$ points.
 *   **Sender Mismatch:** $-30$ points.
 *   **Malicious URL/Phishing:** $-60$ points (Immediate Red Status).
-*   **Urgent Language Detection:** $-10$ points per keyword.
+*   **Quishing (Malicious QR URL):** $-25$ points.
+*   **Urgent Language Detection:** Weighted deductions based on keyword severity (e.g., Wire Transfer: -20, Urgent: -10).
 *   **High-Risk Attachment:** $-20$ points per file.
 
 The final score $S$ is clamped to the range $[0, 100]$. A score $S < 40$ or the presence of a "High Risk" indicator (e.g., Safe Browsing match) results in a `THREAT_LEVEL.RED` classification.
@@ -71,18 +74,18 @@ The scanner provides two primary response actions:
 *   **APIs:**
     *   **Gmail API (v1):** For message ingestion and thread management.
     *   **Google Safe Browsing API (v4):** For real-time URI reputation checks.
-    *   **Google Cloud Vision API:** (Future) For OCR analysis of embedded media.
+    *   **Google Cloud Vision API:** For OCR analysis of embedded media.
 *   **Authentication:** OAuth 2.0.
 *   **Libraries:**
     *   `google-api-python-client` (Python implementation).
     *   `beautifulsoup4` (Python implementation for HTML parsing).
-    *   `yara-python` (Future, for static file signature matching).
+    *   `@modelcontextprotocol/sdk` (Node.js implementation for CLI).
 
 ## 5. Secure Installation & Operational Deployment
 
 ### 5.1 Google Cloud Platform (GCP) Configuration
 1.  **Project Initialization:** Create a new project in the [GCP Console](https://console.cloud.google.com/).
-2.  **API Enablement:** Enable the `Gmail API`, `Google Safe Browsing API`, and `Google Apps Script API`.
+2.  **API Enablement:** Enable the `Gmail API`, `Google Safe Browsing API`, `Google Apps Script API`, and `Cloud Vision API`.
 3.  **Credential Provisioning:**
     *   **OAuth 2.0 Client ID:** Create credentials for a "Web Application" or "Desktop App".
     *   **API Key:** Generate a restricted API Key specifically for the Safe Browsing service.
@@ -95,8 +98,13 @@ When deploying the Python-based Analysis Engine:
 
 ### 5.3 Deployment Steps (Apps Script)
 1.  **Manifest Configuration:** Deploy the `appsscript.json` file to the Apps Script project to register the required scopes.
-2.  **Property Injection:** Use `PropertiesService` to securely inject the `SAFE_BROWSING_API_KEY`.
+2.  **Property Injection:** Use `PropertiesService` to securely inject the `SAFE_BROWSING_API_KEY` and `CLOUD_VISION_API_KEY`.
 3.  **Trigger Setup:** Ensure the contextual trigger is active in the Apps Script project settings.
+
+### 5.4 CLI Extension Setup (MCP)
+1.  **Install Dependencies:** Navigate to `cli-extension/` and run `npm install`.
+2.  **Environment Setup:** Create a `.env` file with `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, and `GMAIL_REFRESH_TOKEN`.
+3.  **MCP Registration:** Add the server to your Gemini CLI `settings.json` as detailed in `cli-extension/GEMINI.md`.
 
 ## 6. Operational Guidelines: Legal, Ethical, and Privacy Standards
 

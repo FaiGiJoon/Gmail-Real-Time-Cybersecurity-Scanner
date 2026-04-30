@@ -1,0 +1,17 @@
+{
+  "name": "gmail-security-scanner",
+  "version": "1.0.0",
+  "description": "Gemini CLI Extension for real-time Gmail cybersecurity auditing.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node tests.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "googleapis": "^144.0.0",
+    "dotenv": "^16.4.5",
+    "levenshtein-edit-distance": "^3.0.0"
+  }
+}
