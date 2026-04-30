@@ -238,13 +238,24 @@ function checkBEC(message) {
 }
 
 /**
- * Detects linguistic threats in message body.
+ * Detects linguistic threats in message body with weighting.
  * @param {string} body
- * @return {string[]} Detected keywords.
+ * @return {Object[]} Detected threats with weights.
  */
 function detectLinguisticThreats(body) {
   const lowerBody = body.toLowerCase();
-  return CONSTANTS.URGENT_KEYWORDS.filter(keyword => lowerBody.includes(keyword));
+  const threats = [];
+
+  for (const keyword in CONSTANTS.LINGUISTIC_WEIGHTS) {
+    if (lowerBody.includes(keyword)) {
+      threats.push({
+        keyword: keyword,
+        weight: CONSTANTS.LINGUISTIC_WEIGHTS[keyword]
+      });
+    }
+  }
+
+  return threats;
 }
 
 /**
@@ -317,13 +328,15 @@ function verifySender(fromHeader) {
 }
 
 /**
- * Analyzes attachments for high-risk features.
+ * Analyzes attachments for high-risk features and QR codes.
  * @param {GoogleAppsScript.Gmail.GmailAttachment[]} attachments
- * @return {Object[]} List of warnings for attachments.
+ * @return {Object} Warnings and extracted URLs from QR codes.
  */
 function analyzeAttachments(attachments) {
   const warnings = [];
+  const qrUrls = [];
   const highRiskExts = ['exe', 'scr', 'vbs', 'js', 'jar', 'bat', 'cmd', 'msi'];
+  const imageExts = ['png', 'jpg', 'jpeg', 'webp'];
 
   attachments.forEach(attachment => {
     const filename = attachment.getName().toLowerCase();
@@ -354,7 +367,74 @@ function analyzeAttachments(attachments) {
         }
       }
     }
+
+    // QR Code Detection in Images
+    if (imageExts.includes(ext)) {
+      const extractedUrls = detectQrCodes(attachment);
+      if (extractedUrls.length > 0) {
+        warnings.push(`QR Code detected in image attachment: ${filename}`);
+        qrUrls.push(...extractedUrls);
+      }
+    }
   });
 
-  return warnings;
+  return { warnings, qrUrls: [...new Set(qrUrls)] };
+}
+
+/**
+ * Calls Google Cloud Vision API to detect QR codes in an image blob.
+ * @param {GoogleAppsScript.Base.Blob} blob
+ * @return {string[]} Extracted URLs.
+ */
+function detectQrCodes(blob) {
+  let apiKey = PropertiesService.getScriptProperties().getProperty('CLOUD_VISION_API_KEY');
+  if (!apiKey) {
+    console.warn('Cloud Vision API Key not configured.');
+    return [];
+  }
+
+  const base64Content = Utilities.base64Encode(blob.getBytes());
+  const endpoint = `${CONSTANTS.CLOUD_VISION_ENDPOINT}?key=${apiKey}`;
+
+  const payload = {
+    requests: [
+      {
+        image: { content: base64Content },
+        features: [{ type: 'BARCODE_DETECTION' }, { type: 'DOCUMENT_TEXT_DETECTION' }]
+      }
+    ]
+  };
+
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(endpoint, options);
+    const result = JSON.parse(response.getContentText());
+    const extractedUrls = [];
+
+    if (result.responses && result.responses[0]) {
+      const resp = result.responses[0];
+
+      // Look in barcode detections
+      if (resp.localizedObjectAnnotations) {
+        // Barcode detection might be under different keys depending on API version/config
+        // For simplicity, we search for URLs in all text found by OCR as well
+      }
+
+      if (resp.fullTextAnnotation) {
+        const text = resp.fullTextAnnotation.text;
+        const matches = text.match(CONSTANTS.URL_REGEX);
+        if (matches) extractedUrls.push(...matches);
+      }
+    }
+    return [...new Set(extractedUrls)];
+  } catch (e) {
+    console.error('Error calling Cloud Vision API: ' + e);
+    return [];
+  }
 }

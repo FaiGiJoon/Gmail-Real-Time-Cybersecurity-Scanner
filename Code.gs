@@ -30,7 +30,13 @@ function runSecurityScan(message, isDeepScan) {
 
   const htmlLinks = extractHtmlLinks(htmlBody);
   const plainUrls = extractUrls(body);
-  const originalUrls = [...new Set([...plainUrls, ...htmlLinks.map(l => l.url)])];
+
+  // Attachment Analysis (includes QR detection)
+  const attachmentData = analyzeAttachments(attachments);
+  const attachmentWarnings = attachmentData.warnings;
+  const qrUrls = attachmentData.qrUrls;
+
+  const originalUrls = [...new Set([...plainUrls, ...htmlLinks.map(l => l.url), ...qrUrls])];
 
   let urlsToScan = originalUrls;
   if (isDeepScan) {
@@ -43,6 +49,7 @@ function runSecurityScan(message, isDeepScan) {
   }
 
   const warnings = [];
+  const maliciousQrUrls = [];
 
   // Passive Link Mismatch Detection (Always run as it is a string operation)
   htmlLinks.forEach(link => {
@@ -56,7 +63,13 @@ function runSecurityScan(message, isDeepScan) {
   if (sbResults.matches) {
     sbResults.matches.forEach(match => {
       const prefix = isDeepScan ? "(Deep Scan) " : "";
-      warnings.push(`${prefix}Malicious URL detected by Safe Browsing: ${match.threat.url}`);
+      const threatUrl = match.threat.url;
+      warnings.push(`${prefix}Malicious URL detected by Safe Browsing: ${threatUrl}`);
+
+      // Track if this malicious URL came from a QR code
+      if (qrUrls.includes(threatUrl)) {
+        maliciousQrUrls.push(threatUrl);
+      }
     });
   }
 
@@ -80,7 +93,7 @@ function runSecurityScan(message, isDeepScan) {
   // Linguistic Threat Detection
   const linguisticThreats = detectLinguisticThreats(body);
   if (linguisticThreats.length > 0) {
-    warnings.push(`Urgent/Suspicious language detected: ${linguisticThreats.join(', ')}`);
+    warnings.push(`Urgent/Suspicious language detected: ${linguisticThreats.map(t => t.keyword).join(', ')}`);
   }
 
   // TLS Check
@@ -102,8 +115,7 @@ function runSecurityScan(message, isDeepScan) {
     warnings.push('The "From" display name does not match the actual sender address.');
   }
 
-  // Attachment Analysis
-  const attachmentWarnings = analyzeAttachments(attachments);
+  // Add attachment warnings
   warnings.push(...attachmentWarnings);
 
   return {
@@ -114,7 +126,9 @@ function runSecurityScan(message, isDeepScan) {
     isTls: isTls,
     attachmentsCount: attachments.length,
     warnings: [...new Set(warnings)],
-    isDeepScan: isDeepScan
+    isDeepScan: isDeepScan,
+    linguisticThreats: linguisticThreats,
+    maliciousQrUrls: maliciousQrUrls
   };
 }
 

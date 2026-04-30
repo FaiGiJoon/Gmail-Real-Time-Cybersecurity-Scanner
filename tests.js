@@ -14,6 +14,7 @@ function runTests() {
   testBEC();
   testLinguisticThreats();
   testTLSCheck();
+  testAnalyzeAttachmentsWithQr();
 
   console.log('All tests completed.');
 }
@@ -71,22 +72,66 @@ function testCalculateSecurityScore() {
     auth: { dmarc: 'pass', spf: 'pass', dkim: 'pass' },
     senderVerified: true,
     urls: [],
-    attachmentsCount: 0
+    attachmentsCount: 0,
+    linguisticThreats: [],
+    maliciousQrUrls: []
   };
 
   const secureScore = calculateSecurityScore(secureData);
-  if (secureScore.level !== CONSTANTS.THREAT_LEVELS.GREEN) console.error('FAILED: Secure Score level');
+  if (secureScore.level !== CONSTANTS.THREAT_LEVELS.GREEN || secureScore.points !== 100) {
+     console.error(`FAILED: Secure Score. Expected 100 GREEN, got ${secureScore.points} ${secureScore.level}`);
+  }
 
   const dangerousData = {
     warnings: ['Malicious URL detected by Safe Browsing: http://evil.com'],
     auth: { dmarc: 'fail', spf: 'fail', dkim: 'fail' },
     senderVerified: false,
     urls: ['http://evil.com'],
-    attachmentsCount: 0
+    attachmentsCount: 0,
+    linguisticThreats: [],
+    maliciousQrUrls: []
   };
 
   const dangerousScore = calculateSecurityScore(dangerousData);
   if (dangerousScore.level !== CONSTANTS.THREAT_LEVELS.RED) console.error('FAILED: Dangerous Score level');
+
+  // Test Weighted Linguistic Threats
+  const linguisticData = {
+    warnings: ['Urgent/Suspicious language detected: wire transfer, urgent'],
+    auth: { dmarc: 'pass', spf: 'pass', dkim: 'pass' },
+    senderVerified: true,
+    urls: [],
+    attachmentsCount: 0,
+    linguisticThreats: [
+      { keyword: 'wire transfer', weight: 20 },
+      { keyword: 'urgent', weight: 10 }
+    ],
+    maliciousQrUrls: []
+  };
+  const linguisticScore = calculateSecurityScore(linguisticData);
+  // 100 - 20 (wire transfer) - 10 (urgent) - 20 (general warning for "Urgent/Suspicious language detected") = 50
+  // Wait, let's check general warnings filter:
+  // !w.includes('Link text mismatch') && !w.includes('Malicious URL') && !w.includes('homograph') && !w.includes('DMARC') && !w.includes('From') && !w.includes('QR Code detected')
+  // "Urgent/Suspicious language detected" IS a general warning.
+  if (linguisticScore.points !== 50) {
+    console.error(`FAILED: Weighted Linguistic Score. Expected 50, got ${linguisticScore.points}`);
+  }
+
+  // Test Quishing Penalty
+  const quishingData = {
+    warnings: ['Malicious URL detected by Safe Browsing: http://evil-qr.com', 'QR Code detected in image attachment: qr.png'],
+    auth: { dmarc: 'pass', spf: 'pass', dkim: 'pass' },
+    senderVerified: true,
+    urls: ['http://evil-qr.com'],
+    attachmentsCount: 1,
+    linguisticThreats: [],
+    maliciousQrUrls: ['http://evil-qr.com']
+  };
+  const quishingScore = calculateSecurityScore(quishingData);
+  // 100 - 60 (Malicious URL) - 25 (QR_THREAT_PENALTY) = 15
+  if (quishingScore.points !== 15) {
+    console.error(`FAILED: Quishing Score. Expected 15, got ${quishingScore.points}`);
+  }
 
   console.log('PASSED: calculateSecurityScore');
 }
@@ -190,12 +235,13 @@ function testLinguisticThreats() {
   console.log('Testing detectLinguisticThreats...');
   const body = 'This is an urgent request for a wire transfer due to account suspended. Immediate action required.';
   const threats = detectLinguisticThreats(body);
+  const detectedKeywords = threats.map(t => t.keyword);
   const expected = ['urgent', 'wire transfer', 'account suspended', 'immediate action'];
 
-  if (threats.length === expected.length && expected.every(t => threats.includes(t))) {
+  if (threats.length === expected.length && expected.every(t => detectedKeywords.includes(t))) {
     console.log('PASSED: Linguistic Threats');
   } else {
-    console.error(`FAILED: Linguistic Threats. Got: ${threats}`);
+    console.error(`FAILED: Linguistic Threats. Got: ${JSON.stringify(threats)}`);
   }
 }
 
@@ -213,4 +259,27 @@ function testTLSCheck() {
   } else {
     console.error('FAILED: TLS Check');
   }
+}
+
+function testAnalyzeAttachmentsWithQr() {
+  console.log('Testing analyzeAttachments with QR detection...');
+
+  const mockAttachment = {
+    getName: () => 'qr_code.png',
+    getBytes: () => []
+  };
+
+  // Mock detectQrCodes to return a URL
+  const originalDetectQrCodes = globalThis.detectQrCodes;
+  globalThis.detectQrCodes = () => ['http://malicious-qr.com'];
+
+  const results = analyzeAttachments([mockAttachment]);
+
+  if (results.qrUrls.includes('http://malicious-qr.com') && results.warnings.some(w => w.includes('QR Code detected'))) {
+    console.log('PASSED: Attachment QR detection');
+  } else {
+    console.error(`FAILED: Attachment QR detection. Results: ${JSON.stringify(results)}`);
+  }
+
+  globalThis.detectQrCodes = originalDetectQrCodes;
 }
