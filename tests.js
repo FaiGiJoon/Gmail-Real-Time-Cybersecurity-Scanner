@@ -17,6 +17,7 @@ function runTests() {
   testAnalyzeAttachmentsWithQr();
   testCalculateHash();
   testScanPdfStructure();
+  testSpotifyImpersonation();
 
   console.log('All tests completed.');
 }
@@ -141,19 +142,26 @@ function testCalculateSecurityScore() {
 function testVerifySender() {
   console.log('Testing verifySender...');
 
+  const mockMessage = (from, replyTo) => ({
+    getFrom: () => from,
+    getReplyTo: () => replyTo || from
+  });
+
   const cases = [
-    { header: '"Google Support" <support@google.com>', expected: true },
-    { header: '"support@google.com" <scammer@evil.com>', expected: false },
-    { header: 'support@google.com', expected: true },
-    { header: 'Random Name <someone@else.com>', expected: true }
+    { from: '"Google Support" <support@google.com>', expected: true },
+    { from: '"support@google.com" <scammer@evil.com>', expected: false },
+    { from: 'support@google.com', expected: true },
+    { from: 'Random Name <someone@else.com>', expected: true },
+    { from: '"Spotify Support" <spotify-billing@gmail.com>', expected: false },
+    { from: 'CEO <ceo@company.com>', replyTo: '"Spotify" <attacker@evil.com>', expected: false }
   ];
 
   cases.forEach(c => {
-    const result = verifySender(c.header);
+    const result = verifySender(mockMessage(c.from, c.replyTo));
     if (result !== c.expected) {
-      console.error(`FAILED: header="${c.header}". Expected ${c.expected}, got ${result}`);
+      console.error(`FAILED: from="${c.from}", replyTo="${c.replyTo}". Expected ${c.expected}, got ${result}`);
     } else {
-      console.log(`PASSED: header="${c.header}"`);
+      console.log(`PASSED: from="${c.from}"`);
     }
   });
 }
@@ -322,5 +330,52 @@ function testScanPdfStructure() {
     console.log('PASSED: scanPdfStructure');
   } else {
     console.error(`FAILED: scanPdfStructure. Clean results count: ${cleanResults.length}, Malicious: ${malResults.length}`);
+  }
+}
+
+function testSpotifyImpersonation() {
+  console.log('Testing Spotify Impersonation...');
+
+  const mockMessage = {
+    getPlainBody: () => 'Your Spotify Premium account subscription suspended. Please update billing and payment failed.',
+    getBody: () => 'Your Spotify Premium account subscription suspended. Please update billing and payment failed.',
+    getFrom: () => '"Spotify Support" <spotify-billing@gmail.com>',
+    getReplyTo: () => 'spotify-billing@gmail.com',
+    getAttachments: () => [],
+    getId: () => 'spotify_test_id',
+    getRawContent: () => 'From: "Spotify Support" <spotify-billing@gmail.com>\r\nSubject: Payment Failed'
+  };
+
+  const scanData = runSecurityScan(mockMessage, false);
+  const score = calculateSecurityScore(scanData);
+
+  let passed = true;
+  if (!scanData.isSpotifyImpersonation) {
+    console.error('FAILED: Spotify impersonation not detected in scanData');
+    passed = false;
+  }
+  if (score.level !== CONSTANTS.THREAT_LEVELS.RED) {
+    console.error(`FAILED: Expected RED threat level, got ${score.level}`);
+    passed = false;
+  }
+  if (score.points > 60) {
+    console.error(`FAILED: Expected score <= 60 (100 - 40 penalty), got ${score.points}`);
+    passed = false;
+  }
+
+  const expectedWarnings = [
+    "CRITICAL: Display Name spoofing detected. Sender claims to be 'Spotify' but uses a non-Spotify domain.",
+    "HIGH RISK: Email uses Spotify branding alongside high-pressure billing language."
+  ];
+
+  expectedWarnings.forEach(w => {
+    if (!scanData.warnings.includes(w)) {
+      console.error(`FAILED: Missing expected warning: ${w}`);
+      passed = false;
+    }
+  });
+
+  if (passed) {
+    console.log('PASSED: Spotify Impersonation');
   }
 }

@@ -110,13 +110,18 @@ function runSecurityScan(message, isDeepScan) {
   }
 
   // Sender Verification
-  const senderVerified = verifySender(from);
+  const senderVerified = verifySender(message);
   if (!senderVerified) {
     warnings.push('The "From" display name does not match the actual sender address.');
   }
 
   // Add attachment warnings
   warnings.push(...attachmentWarnings);
+
+  // Spotify Impersonation Check
+  const spotifyWarnings = checkSpotifyImpersonation(from, body, urlsToScan);
+  warnings.push(...spotifyWarnings);
+  const isSpotifyImpersonation = spotifyWarnings.length > 0;
 
   const hasMalware = warnings.some(w => w.includes('malicious') || w.includes('Suspicious PDF'));
 
@@ -131,7 +136,8 @@ function runSecurityScan(message, isDeepScan) {
     isDeepScan: isDeepScan,
     linguisticThreats: linguisticThreats,
     maliciousQrUrls: maliciousQrUrls,
-    hasMalware: hasMalware
+    hasMalware: hasMalware,
+    isSpotifyImpersonation: isSpotifyImpersonation
   };
 }
 

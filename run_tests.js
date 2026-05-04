@@ -26,6 +26,7 @@ const mockGmailApp = {
     }),
     markRead: () => { console.log('Mocked markRead called'); },
     getFrom: () => 'sender@example.com',
+    getReplyTo: () => 'sender@example.com',
     getPlainBody: () => 'body',
     getBody: () => 'html',
     getAttachments: () => [],
@@ -38,14 +39,24 @@ const mockGmailApp = {
 const mockUrlFetchApp = {
   fetch: (url, options) => {
     // Basic mock for unshortenUrl and checkSafeBrowsing
-    if (url.includes('safebrowsing')) {
-      return { getContentText: () => JSON.stringify({ matches: [] }) };
+    if (url && url.includes('safebrowsing')) {
+      return {
+        getContentText: () => JSON.stringify({ matches: [] }),
+        getResponseCode: () => 200
+      };
     }
     // Mock for redirect
     if (url === 'http://bit.ly/123') {
-      return { getHeaders: () => ({ 'Location': 'http://example.com' }) };
+      return {
+        getHeaders: () => ({ 'Location': 'http://example.com' }),
+        getResponseCode: () => 200
+      };
     }
-    return { getHeaders: () => ({}) };
+    return {
+      getHeaders: () => ({}),
+      getResponseCode: () => 200,
+      getContentText: () => '{}'
+    };
   }
 };
 
