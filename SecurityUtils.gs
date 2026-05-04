@@ -69,8 +69,12 @@ function isLinkTextMismatch(text, url) {
  */
 function isHomograph(url) {
   try {
-    const domain = new URL(url).hostname;
-    return domain.startsWith('xn--');
+    const domain = new URL(url).hostname.toLowerCase();
+    // Homograph Protection: Ensure the isHomograph function is triggered for any URL containing "spotify" to catch Punycode variants.
+    if (domain.startsWith('xn--') || domain.includes('spotify')) {
+      return domain.startsWith('xn--');
+    }
+    return false;
   } catch (e) {
     return false;
   }
@@ -296,32 +300,44 @@ function parseAuthHeaders(authHeader) {
 }
 
 /**
- * Verifies if the From display name matches the sender address.
- * @param {string} fromHeader The full From header (e.g. "Name <email@example.com>").
+ * Verifies if the sender headers (From, Reply-To) match the claimed identity.
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message
  * @return {boolean} True if they appear to match or if no display name is present.
  */
-function verifySender(fromHeader) {
-  if (!fromHeader) return true;
+function verifySender(message) {
+  const headersToCheck = [message.getFrom(), message.getReplyTo()];
   
-  // Extract name and email: "Display Name" <email@example.com> or email@example.com
-  let displayName = '';
-  let email = '';
+  for (const header of headersToCheck) {
+    if (!header) continue;
 
-  const match = fromHeader.match(/^(?:"?([^"]*)"?\s)?(?:<(.+)>)$/);
-  if (match) {
-    displayName = match[1] ? match[1].trim().toLowerCase() : '';
-    email = match[2] ? match[2].trim().toLowerCase() : '';
-  } else {
-    // Just an email or something else
-    email = fromHeader.trim().toLowerCase();
-  }
+    let displayName = '';
+    let email = '';
 
-  if (!displayName) return true;
+    const match = header.match(/^(?:"?([^"]*)"?\s)?(?:<(.+)>)$/);
+    if (match) {
+      displayName = match[1] ? match[1].trim().toLowerCase() : '';
+      email = match[2] ? match[2].trim().toLowerCase() : '';
+    } else {
+      email = header.trim().toLowerCase();
+    }
 
-  // Simple heuristic: if display name looks like an email but doesn't match the actual email
-  const emailInNameMatch = displayName.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
-  if (emailInNameMatch && emailInNameMatch[0] !== email) {
-    return false;
+    if (!displayName) continue;
+
+    // Heuristic: if display name looks like an email but doesn't match the actual email
+    const emailInNameMatch = displayName.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+    if (emailInNameMatch && emailInNameMatch[0] !== email) {
+      return false;
+    }
+
+    // Spotify-specific check
+    if (displayName.includes('spotify')) {
+      const isLegitDomain = email.endsWith('@spotify.com') ||
+                            email.endsWith('@news.spotify.com') ||
+                            email.endsWith('@support.spotify.com');
+      if (!isLegitDomain) {
+        return false;
+      }
+    }
   }
 
   return true;
@@ -510,6 +526,56 @@ function scanPdfStructure(blob) {
   if (/\/EmbeddedFile/i.test(content)) {
     warnings.push(`Suspicious PDF: ${filename} contains an embedded file payload.`);
   }
+
+  return warnings;
+}
+
+/**
+ * Specialized check for Spotify-themed brand impersonation.
+ */
+function checkSpotifyImpersonation(fromHeader, body, urls) {
+  const fromLower = fromHeader.toLowerCase();
+  const bodyLower = body.toLowerCase();
+
+  // 1. Detect if the "Display Name" claims to be Spotify
+  const isClaimingToBeSpotify = fromLower.includes('spotify');
+
+  // 2. Check if the actual email domain is legitimate
+  const emailRegex = /<([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})>|([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
+  const match = fromLower.match(emailRegex);
+  const email = match ? (match[1] || match[2]) : '';
+
+  const isLegitDomain = email.endsWith('@spotify.com') ||
+                        email.endsWith('@news.spotify.com') ||
+                        email.endsWith('@support.spotify.com');
+
+  const warnings = [];
+
+  if (isClaimingToBeSpotify && !isLegitDomain) {
+    warnings.push("CRITICAL: Display Name spoofing detected. Sender claims to be 'Spotify' but uses a non-Spotify domain.");
+  }
+
+  // 3. Look for "Spotify" keywords combined with high-pressure lures
+  const lures = ['payment failed', 'subscription suspended', 'update billing', 'premium account'];
+  const containsLure = lures.some(lure => bodyLower.includes(lure));
+
+  if (isClaimingToBeSpotify && containsLure) {
+    warnings.push("HIGH RISK: Email uses Spotify branding alongside high-pressure billing language.");
+  }
+
+  // 4. Check for "Homograph" or suspicious Spotify URLs
+  urls.forEach(url => {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      // Catch Punycode variants OR literal 'spotify' in non-official domains
+      if (hostname.includes('spotify') || hostname.startsWith('xn--')) {
+        const isOfficial = hostname === 'spotify.com' || hostname.endsWith('.spotify.com');
+        if (!isOfficial) {
+          warnings.push(`SUSPICIOUS: URL ${url} looks like Spotify but is not a recognized spotify.com domain.`);
+        }
+      }
+    } catch (e) {}
+  });
 
   return warnings;
 }

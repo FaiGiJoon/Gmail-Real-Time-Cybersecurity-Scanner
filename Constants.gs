@@ -29,7 +29,7 @@ const CONSTANTS = {
     GREEN: 'https://www.gstatic.com/images/icons/material/system/1x/check_circle_green_24dp.png'
   },
 
-  TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook'],
+  TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook', 'spotify'],
 
   LINGUISTIC_WEIGHTS: {
     'urgent': 10,
@@ -46,9 +46,14 @@ const CONSTANTS = {
     'final notice': 15,
     'official request': 10,
     'restricted access': 15,
-    'gift card': 20
+    'gift card': 20,
+    'payment failed': 15,
+    'subscription suspended': 15,
+    'update billing': 15,
+    'premium account': 15
   },
 
   QR_THREAT_PENALTY: 25,
+  SPOTIFY_IMPERSONATION_PENALTY: 40,
   SECURITY_REVIEW_LABEL: 'Security Review'
 };

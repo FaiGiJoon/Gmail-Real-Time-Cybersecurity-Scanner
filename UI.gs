@@ -139,6 +139,11 @@ function calculateSecurityScore(data) {
     });
   }
 
+  // Spotify Impersonation Penalty (-40)
+  if (data.isSpotifyImpersonation) {
+    points -= CONSTANTS.SPOTIFY_IMPERSONATION_PENALTY;
+  }
+
   // General warnings deduction (-20 each, excluding those already penalized)
   const generalWarnings = warnings.filter(w =>
     !w.includes('Link text mismatch') &&
@@ -154,7 +159,7 @@ function calculateSecurityScore(data) {
 
   let level = CONSTANTS.THREAT_LEVELS.GREEN;
   let status = CONSTANTS.STATUS_TEXT.SECURE;
-  if (points < 40 || hasPhishingLink || (data.maliciousQrUrls && data.maliciousQrUrls.length > 0)) {
+  if (points < 40 || hasPhishingLink || (data.maliciousQrUrls && data.maliciousQrUrls.length > 0) || data.isSpotifyImpersonation) {
     level = CONSTANTS.THREAT_LEVELS.RED;
     status = CONSTANTS.STATUS_TEXT.HIGH_RISK;
   } else if (points < 80) {
