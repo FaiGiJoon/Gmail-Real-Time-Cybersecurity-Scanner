@@ -368,6 +368,17 @@ function analyzeAttachments(attachments) {
       }
     }
 
+    // Malware Reputation Check (VirusTotal)
+    const hash = calculateHash(attachment);
+    const vtWarning = checkVirusTotal(hash, filename);
+    if (vtWarning) warnings.push(vtWarning);
+
+    // PDF Structural Analysis
+    if (ext === 'pdf') {
+      const pdfWarnings = scanPdfStructure(attachment);
+      warnings.push(...pdfWarnings);
+    }
+
     // QR Code Detection in Images
     if (imageExts.includes(ext)) {
       const extractedUrls = detectQrCodes(attachment);
@@ -437,4 +448,68 @@ function detectQrCodes(blob) {
     console.error('Error calling Cloud Vision API: ' + e);
     return [];
   }
+}
+
+/**
+ * Calculates SHA-256 hash of a blob.
+ */
+function calculateHash(blob) {
+  const bytes = blob.getBytes();
+  const hash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  let hexString = '';
+  for (let i = 0; i < hash.length; i++) {
+    const byte = hash[i] & 0xFF;
+    if (byte < 16) hexString += '0';
+    hexString += byte.toString(16);
+  }
+  return hexString;
+}
+
+/**
+ * Queries VirusTotal for a file hash.
+ */
+function checkVirusTotal(hash, filename) {
+  let apiKey = PropertiesService.getScriptProperties().getProperty('VIRUSTOTAL_API_KEY');
+  if (!apiKey) return null;
+
+  const url = CONSTANTS.VIRUSTOTAL_ENDPOINT + hash;
+  const options = {
+    headers: { 'x-apikey': apiKey },
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    if (response.getResponseCode() === 200) {
+      const data = JSON.parse(response.getContentText());
+      const stats = data.data.attributes.last_analysis_stats;
+      if (stats.malicious > 0) {
+        return `VirusTotal alert: ${filename} flagged as malicious by ${stats.malicious} engines.`;
+      }
+    }
+  } catch (e) {
+    console.error('VT Error: ' + e);
+  }
+  return null;
+}
+
+/**
+ * Scans PDF content for suspicious elements (e.g., /JS, /JavaScript, /OpenAction).
+ */
+function scanPdfStructure(blob) {
+  const warnings = [];
+  const content = blob.getDataAsString();
+  const filename = blob.getName();
+
+  if (/\/JS|\/JavaScript/i.test(content)) {
+    warnings.push(`Suspicious PDF: ${filename} contains embedded JavaScript.`);
+  }
+  if (/\/OpenAction|\/AA/i.test(content)) {
+    warnings.push(`Suspicious PDF: ${filename} contains auto-launch actions.`);
+  }
+  if (/\/EmbeddedFile/i.test(content)) {
+    warnings.push(`Suspicious PDF: ${filename} contains an embedded file payload.`);
+  }
+
+  return warnings;
 }

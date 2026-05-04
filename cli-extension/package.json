@@ -13,5 +13,8 @@
     "googleapis": "^144.0.0",
     "dotenv": "^16.4.5",
     "levenshtein-edit-distance": "^3.0.0"
+  },
+  "devDependencies": {
+    "crypto": "^1.0.1"
   }
 }

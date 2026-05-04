@@ -35,6 +35,8 @@ export function calculateScore(data) {
 
   if (!data.senderVerified) points -= 30;
 
+  if (data.hasMalware) points -= 80;
+
   const hasPhishingLink = warnings.some(w =>
     w.includes('Link text mismatch') ||
     w.includes('Malicious URL') ||

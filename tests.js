@@ -15,6 +15,8 @@ function runTests() {
   testLinguisticThreats();
   testTLSCheck();
   testAnalyzeAttachmentsWithQr();
+  testCalculateHash();
+  testScanPdfStructure();
 
   console.log('All tests completed.');
 }
@@ -282,4 +284,43 @@ function testAnalyzeAttachmentsWithQr() {
   }
 
   globalThis.detectQrCodes = originalDetectQrCodes;
+}
+
+function testCalculateHash() {
+  console.log('Testing calculateHash...');
+  const mockBlob = {
+    getBytes: () => [72, 101, 108, 108, 111] // "Hello"
+  };
+
+  // In the mock environment, calculateHash returns a fixed dummy value
+  const result = calculateHash(mockBlob);
+
+  if (result === '010203') {
+    console.log('PASSED: calculateHash (Mocked)');
+  } else {
+    console.error(`FAILED: calculateHash. Got ${result}`);
+  }
+}
+
+function testScanPdfStructure() {
+  console.log('Testing scanPdfStructure...');
+
+  const mockCleanPdf = {
+    getDataAsString: () => '%PDF-1.4 ... clean content ...',
+    getName: () => 'clean.pdf'
+  };
+
+  const mockMaliciousPdf = {
+    getDataAsString: () => '%PDF-1.4 ... /JS (alert("hack")) ... /OpenAction ...',
+    getName: () => 'malicious.pdf'
+  };
+
+  const cleanResults = scanPdfStructure(mockCleanPdf);
+  const malResults = scanPdfStructure(mockMaliciousPdf);
+
+  if (cleanResults.length === 0 && malResults.length === 2) {
+    console.log('PASSED: scanPdfStructure');
+  } else {
+    console.error(`FAILED: scanPdfStructure. Clean results count: ${cleanResults.length}, Malicious: ${malResults.length}`);
+  }
 }

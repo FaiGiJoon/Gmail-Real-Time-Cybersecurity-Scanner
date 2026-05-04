@@ -118,6 +118,8 @@ function runSecurityScan(message, isDeepScan) {
   // Add attachment warnings
   warnings.push(...attachmentWarnings);
 
+  const hasMalware = warnings.some(w => w.includes('malicious') || w.includes('Suspicious PDF'));
+
   return {
     messageId: messageId,
     urls: urlsToScan,
@@ -128,7 +130,8 @@ function runSecurityScan(message, isDeepScan) {
     warnings: [...new Set(warnings)],
     isDeepScan: isDeepScan,
     linguisticThreats: linguisticThreats,
-    maliciousQrUrls: maliciousQrUrls
+    maliciousQrUrls: maliciousQrUrls,
+    hasMalware: hasMalware
   };
 }
 

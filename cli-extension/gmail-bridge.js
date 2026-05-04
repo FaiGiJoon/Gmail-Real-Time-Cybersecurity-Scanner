@@ -62,4 +62,13 @@ export class GmailBridge {
       }
     });
   }
+
+  async getAttachment(messageId, attachmentId) {
+    const res = await this.gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId: messageId,
+      id: attachmentId
+    });
+    return res.data;
+  }
 }

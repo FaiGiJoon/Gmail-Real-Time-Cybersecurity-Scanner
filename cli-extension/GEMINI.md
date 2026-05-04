@@ -16,6 +16,10 @@ Performs a deep-dive security analysis of a specific thread, calculating a secur
 Moves a suspicious thread to the Spam folder and applies the "Security Review" label.
 - **Parameters:** `threadId` (string, required)
 
+### `scan_attachment_malware`
+Downloads an attachment and calculates its SHA-256 hash for forensic analysis.
+- **Parameters:** `messageId` (string, required), `attachmentId` (string, required), `filename` (string)
+
 ## Usage Instructions for Gemini
 
 - **Threat Hunting:** Start by running `get_threat_report` to identify potential targets for audit.

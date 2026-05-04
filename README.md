@@ -15,6 +15,7 @@ The system is architected as a serverless Google Workspace Add-on, ensuring low 
 3.  **Analysis Pipeline:**
     *   **Cryptographic & Header Validation:** Verification of SPF, DKIM, and DMARC status via the `Authentication-Results` header.
     *   **Recursive URI Analysis:** A depth-first traversal of the URI redirect chain. For any given URL $U_0$, the engine follows $n$ redirects such that the final destination $U_n$ is evaluated: $U_0 \rightarrow U_1 \rightarrow \dots \rightarrow U_n$.
+*   **Deep Attachment Inspection:** Hash-based reputation checks (VirusTotal) and structural PDF analysis to detect embedded payloads (JavaScript, OpenActions).
     *   **Behavioral Heuristics:** Comparative analysis of sender identity. The system validates that the RFC 5322 `From` address matches the `Reply-To` address and that display name spoofing is absent.
     *   **Linguistic Parsing:** A weight-based keyword analysis engine that identifies high-pressure urgency cues and social engineering triggers.
 4.  **Actionable Intelligence & Mitigation:** Results are aggregated into a composite security score $S$, calculated as:
@@ -34,7 +35,7 @@ The following matrix defines the scanner’s current and roadmap capabilities ac
 | **Spear-Phishing** | Link-Text Mismatch Detection | Regex-based extraction of `href` attributes and visible text, followed by domain-level string comparison. |
 | **Whaling** | Executive Impersonation Guard | Heuristic matching of display names against organizational directory patterns and RFC 5322 address validation. |
 | **BEC** | Cross-Header Discrepancy | Strict logical verification of domain parity: $Domain(From) \equiv Domain(ReplyTo)$. |
-| **Malware Delivery** | Multi-Stage File Inspection | Extension blacklisting (EXE, SCR, VBS) + Encrypted ZIP detection via `Utilities.unzip` error handling. |
+| **Malware Delivery** | Deep File Inspection | Extension blacklisting + Hash-based reputation (VirusTotal) + PDF structural analysis for embedded payloads. |
 | **Quishing** | Visual Link Extraction | Integration with Google Cloud Vision for OCR-based QR code decoding. Extracted URLs are recursively analyzed. |
 | **Account Hijacking** | Auth Result Enforcement | State machine validation of DMARC, SPF, and DKIM status within the `Authentication-Results` header. |
 | **Identity Theft** | PII Exfiltration Monitoring | Pattern-matching for Social Security Numbers, Credit Card data, and other sensitive PII patterns. |

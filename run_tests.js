@@ -54,7 +54,10 @@ const mockPropertiesService = {
 };
 
 const mockUtilities = {
-  unzip: () => { throw new Error('password'); } // To test encrypted zip detection
+  unzip: () => { throw new Error('password'); }, // To test encrypted zip detection
+  computeDigest: () => [1, 2, 3],
+  DigestAlgorithm: { SHA_256: 'SHA_256' },
+  base64Encode: () => 'base64'
 };
 
 const context = {

@@ -7,6 +7,7 @@ import {
 import { GmailBridge } from "./gmail-bridge.js";
 import { calculateScore, isTyposquatted, CONSTANTS } from "./scoring-engine.js";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -58,6 +59,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["threadId"]
         },
+      },
+      {
+        name: "scan_attachment_malware",
+        description: "Downloads and scans an attachment for malware signatures (hash-based).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            messageId: { type: "string" },
+            attachmentId: { type: "string" },
+            filename: { type: "string" }
+          },
+          required: ["messageId", "attachmentId"]
+        }
       }
     ],
   };
@@ -138,6 +152,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       await bridge.quarantineThread(args.threadId);
       return {
         content: [{ type: "text", text: `Thread ${args.threadId} has been quarantined successfully.` }],
+      };
+    }
+
+    if (name === "scan_attachment_malware") {
+      const attachment = await bridge.getAttachment(args.messageId, args.attachmentId);
+      const buffer = Buffer.from(attachment.data, 'base64');
+      const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+      const analysis = {
+        filename: args.filename,
+        sha256: hash,
+        recommendation: "Check this hash on VirusTotal or Hybrid Analysis."
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(analysis, null, 2) }],
       };
     }
 

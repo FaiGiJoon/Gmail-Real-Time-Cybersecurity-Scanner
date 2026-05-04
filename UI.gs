@@ -120,6 +120,9 @@ function calculateSecurityScore(data) {
   // Sender Mismatch (-30)
   if (!data.senderVerified) points -= 30;
 
+  // Malware Detection (-80)
+  if (data.hasMalware) points -= 80;
+
   // Phishing/Malicious Link detection (-60)
   const hasPhishingLink = warnings.some(w => w.includes('Link text mismatch') || w.includes('Malicious URL') || w.includes('homograph'));
   if (hasPhishingLink) points -= 60;

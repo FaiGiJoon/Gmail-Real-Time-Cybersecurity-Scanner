@@ -6,6 +6,7 @@ const CONSTANTS = {
   SAFE_BROWSING_API_KEY: 'YOUR_SAFE_BROWSING_API_KEY',
   SAFE_BROWSING_ENDPOINT: 'https://safebrowsing.googleapis.com/v4/threatMatches:find',
   CLOUD_VISION_ENDPOINT: 'https://vision.googleapis.com/v1/images:annotate',
+  VIRUSTOTAL_ENDPOINT: 'https://www.virustotal.com/api/v3/files/',
 
   URL_REGEX: /https?:\/\/[^\s<"']+/g,
   LINK_REGEX: /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1[^>]*?>(.*?)<\/a>/gi,
