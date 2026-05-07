@@ -132,6 +132,16 @@ function calculateSecurityScore(data) {
     points -= CONSTANTS.QR_THREAT_PENALTY;
   }
 
+  // Relay Audit Deduction (-35)
+  if (warnings.some(w => w.includes('relay count') || w.includes('brand spoofing'))) {
+    points -= CONSTANTS.RELAY_AUDIT_PENALTY;
+  }
+
+  // Hidden Link Deduction (-25)
+  if (warnings.some(w => w.includes('Hidden link detected'))) {
+    points -= CONSTANTS.HIDDEN_LINK_PENALTY;
+  }
+
   // Linguistic Threat Weights
   if (data.linguisticThreats) {
     data.linguisticThreats.forEach(threat => {

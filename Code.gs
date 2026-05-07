@@ -56,6 +56,9 @@ function runSecurityScan(message, isDeepScan) {
     if (isLinkTextMismatch(link.text, link.url)) {
       warnings.push(`Link text mismatch: Visible text says "${link.text}" but leads to ${link.url}`);
     }
+    if (link.isHidden) {
+      warnings.push(`Hidden link detected: A link to ${link.url} is hidden using CSS.`);
+    }
   });
 
   // Safe Browsing check (Passive or Deep)
@@ -114,6 +117,10 @@ function runSecurityScan(message, isDeepScan) {
   if (!senderVerified) {
     warnings.push('The "From" display name does not match the actual sender address.');
   }
+
+  // Relay Auditing
+  const relayWarnings = auditRelayPath(message);
+  warnings.push(...relayWarnings);
 
   // Add attachment warnings
   warnings.push(...attachmentWarnings);

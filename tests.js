@@ -18,6 +18,8 @@ function runTests() {
   testCalculateHash();
   testScanPdfStructure();
   testSpotifyImpersonation();
+  testAuditRelayPath();
+  testHiddenLinkDetection();
 
   console.log('All tests completed.');
 }
@@ -377,5 +379,43 @@ function testSpotifyImpersonation() {
 
   if (passed) {
     console.log('PASSED: Spotify Impersonation');
+  }
+}
+
+function testAuditRelayPath() {
+  console.log('Testing auditRelayPath...');
+
+  const mockMessage = (from, raw) => ({
+    getFrom: () => from,
+    getRawContent: () => raw
+  });
+
+  const internalSender = 'support@spotify.com';
+  const maliciousRaw = 'Received: from evil.com by mx.google.com ...\r\nReceived: from attacker.net by evil.com ...';
+  const legitRaw = 'Received: from mail.spotify.com by mx.google.com ...\r\nReceived: from internal.spotify.com by mail.spotify.com ...';
+
+  const malWarnings = auditRelayPath(mockMessage(internalSender, maliciousRaw));
+  const legitWarnings = auditRelayPath(mockMessage(internalSender, legitRaw));
+
+  if (malWarnings.some(w => w.includes('Internal brand spoofing')) && legitWarnings.length === 0) {
+    console.log('PASSED: auditRelayPath');
+  } else {
+    console.error(`FAILED: auditRelayPath. Malicious warnings: ${JSON.stringify(malWarnings)}, Legit: ${JSON.stringify(legitWarnings)}`);
+  }
+}
+
+function testHiddenLinkDetection() {
+  console.log('Testing Hidden Link Detection...');
+
+  const html = '<a href="http://evil.com" style="display:none">Hidden</a><a href="http://google.com">Visible</a>';
+  const links = extractHtmlLinks(html);
+
+  const hiddenLink = links.find(l => l.url === 'http://evil.com');
+  const visibleLink = links.find(l => l.url === 'http://google.com');
+
+  if (hiddenLink && hiddenLink.isHidden && visibleLink && !visibleLink.isHidden) {
+    console.log('PASSED: Hidden Link Detection');
+  } else {
+    console.error(`FAILED: Hidden Link Detection. Links: ${JSON.stringify(links)}`);
   }
 }

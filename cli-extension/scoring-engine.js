@@ -20,6 +20,8 @@ export const CONSTANTS = {
     'gift card': 20
   },
   QR_THREAT_PENALTY: 25,
+  RELAY_AUDIT_PENALTY: 35,
+  HIDDEN_LINK_PENALTY: 25,
   URL_REGEX: /https?:\/\/[^\s<"']+/g
 };
 
@@ -45,6 +47,14 @@ export function calculateScore(data) {
   if (hasPhishingLink) points -= 60;
 
   if (data.hasMaliciousQr) points -= CONSTANTS.QR_THREAT_PENALTY;
+
+  if (warnings.some(w => w.includes('relay count') || w.includes('brand spoofing'))) {
+    points -= CONSTANTS.RELAY_AUDIT_PENALTY;
+  }
+
+  if (warnings.some(w => w.includes('Hidden link detected'))) {
+    points -= CONSTANTS.HIDDEN_LINK_PENALTY;
+  }
 
   if (data.body) {
     const lowerBody = data.body.toLowerCase();
