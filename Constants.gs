@@ -31,6 +31,8 @@ const CONSTANTS = {
 
   TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook', 'spotify'],
 
+  OFFICIAL_DOMAINS: ['spotify.com', 'news.spotify.com', 'support.spotify.com'],
+
   LINGUISTIC_WEIGHTS: {
     'urgent': 10,
     'immediate action': 10,
@@ -54,6 +56,8 @@ const CONSTANTS = {
   },
 
   QR_THREAT_PENALTY: 25,
+  RELAY_AUDIT_PENALTY: 35,
+  HIDDEN_LINK_PENALTY: 25,
   SPOTIFY_IMPERSONATION_PENALTY: 40,
   SECURITY_REVIEW_LABEL: 'Security Review'
 };

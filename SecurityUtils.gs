@@ -22,9 +22,20 @@ function extractHtmlLinks(html) {
   const links = [];
   let match;
   while ((match = CONSTANTS.LINK_REGEX.exec(html)) !== null) {
+    const fullTag = match[0];
+    const url = match[2];
+    const text = match[3].replace(/<[^>]*>?/gm, '').trim();
+
+    // CSS-based hidden link detection
+    let isHidden = false;
+    if (/style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0|font-size\s*:\s*0|height\s*:\s*0|width\s*:\s*0)[^"']*["']/i.test(fullTag)) {
+      isHidden = true;
+    }
+
     links.push({
-      url: match[2],
-      text: match[3].replace(/<[^>]*>?/gm, '').trim() // Strip nested HTML from text
+      url: url,
+      text: text,
+      isHidden: isHidden
     });
   }
   // Reset regex state since it's global
@@ -300,6 +311,37 @@ function parseAuthHeaders(authHeader) {
 }
 
 /**
+ * Audits the delivery path via Received headers to detect anomalous relays.
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message
+ * @return {string[]} Warnings if anomalies are found.
+ */
+function auditRelayPath(message) {
+  const raw = message.getRawContent();
+  const receivedHeaders = raw.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
+  const warnings = [];
+
+  if (receivedHeaders.length > 10) {
+    warnings.push(`Anomalous relay count detected (${receivedHeaders.length} hops). Possible mail-loop or routing manipulation.`);
+  }
+
+  // Heuristic: Check for "Internal" markers in headers from external sources
+  const from = message.getFrom().toLowerCase();
+  const isInternalSender = CONSTANTS.OFFICIAL_DOMAINS.some(domain => from.includes('@' + domain));
+
+  if (isInternalSender) {
+    const firstHop = receivedHeaders[receivedHeaders.length - 1] || '';
+    // If it's an internal sender, the first hop should ideally be from a trusted infrastructure.
+    // This is a simplified check for 2026 standards.
+    const isTrustedHop = CONSTANTS.OFFICIAL_DOMAINS.some(domain => firstHop.includes(domain)) || firstHop.includes('google.com');
+    if (!isTrustedHop) {
+       warnings.push('CRITICAL: Internal brand spoofing detected. Message claims to be internal but originated from an external relay.');
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Verifies if the sender headers (From, Reply-To) match the claimed identity.
  * @param {GoogleAppsScript.Gmail.GmailMessage} message
  * @return {boolean} True if they appear to match or if no display name is present.
@@ -447,16 +489,37 @@ function detectQrCodes(blob) {
     if (result.responses && result.responses[0]) {
       const resp = result.responses[0];
 
-      // Look in barcode detections
-      if (resp.localizedObjectAnnotations) {
-        // Barcode detection might be under different keys depending on API version/config
-        // For simplicity, we search for URLs in all text found by OCR as well
-      }
-
-      if (resp.fullTextAnnotation) {
+      // Deep search for URLs in all text found by OCR
+      if (resp.fullTextAnnotation && resp.fullTextAnnotation.text) {
         const text = resp.fullTextAnnotation.text;
         const matches = text.match(CONSTANTS.URL_REGEX);
         if (matches) extractedUrls.push(...matches);
+
+        // Also check for common obfuscated patterns like "hxxp" or "[.]"
+        const obfuscated = text.match(/h[x]{2}ps?:\/\/[^\s<"']+/gi);
+        if (obfuscated) {
+          obfuscated.forEach(u => extractedUrls.push(u.replace(/h[x]{2}p/i, 'http')));
+        }
+
+        const dotObfuscated = text.match(/https?:\/\/[^\s<"']+/gi);
+        if (dotObfuscated) {
+          dotObfuscated.forEach(u => {
+            if (u.includes('[.]')) {
+              extractedUrls.push(u.replace(/\[\.\]/g, '.'));
+            }
+          });
+        }
+      }
+
+      // Explicit barcode detection handling
+      if (resp.barcodeAnnotations) {
+        resp.barcodeAnnotations.forEach(anno => {
+          if (anno.rawValue) {
+            const matches = anno.rawValue.match(CONSTANTS.URL_REGEX);
+            if (matches) extractedUrls.push(...matches);
+            else if (anno.rawValue.startsWith('http')) extractedUrls.push(anno.rawValue);
+          }
+        });
       }
     }
     return [...new Set(extractedUrls)];
