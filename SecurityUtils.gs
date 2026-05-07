@@ -206,27 +206,138 @@ function isTyposquatted(url) {
 }
 
 /**
- * Levenshtein distance algorithm.
+ * Optimized Levenshtein distance algorithm (Wagner-Fischer with space optimization).
+ * Complexity: O(min(N, M)) space.
  */
 function levenshteinDistance(a, b) {
-  const matrix = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  if (a.length < b.length) [a, b] = [b, a];
+  if (b.length === 0) return a.length;
 
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
+  let previousRow = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let currentRow = new Array(b.length + 1);
+
+  for (let i = 1; i <= a.length; i++) {
+    currentRow[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      currentRow[j] = Math.min(
+        currentRow[j - 1] + 1,      // insertion
+        previousRow[j] + 1,         // deletion
+        previousRow[j - 1] + cost   // substitution
+      );
     }
+    [previousRow, currentRow] = [currentRow, previousRow];
   }
-  return matrix[b.length][a.length];
+  return previousRow[b.length];
+}
+
+/**
+ * Decodes MIME-encoded headers (RFC 2047).
+ * Supports Base64 and Quoted-Printable.
+ */
+function decodeMimeHeader(header) {
+  if (!header) return "";
+  return header.replace(/=\?([^?]+)\?([QB])\?([^?]+)\?=/gi, (match, charset, encoding, text) => {
+    if (encoding.toUpperCase() === 'B') {
+      try {
+        const decoded = Utilities.newBlob(Utilities.base64Decode(text, Utilities.Charset.UTF_8)).getDataAsString();
+        return decoded;
+      } catch (e) {
+        return text;
+      }
+    } else if (encoding.toUpperCase() === 'Q') {
+      const bytes = [];
+      const qText = text.replace(/_/g, ' ');
+      for (let i = 0; i < qText.length; i++) {
+        if (qText[i] === '=' && i + 2 < qText.length) {
+          const hex = qText.substring(i + 1, i + 3);
+          bytes.push(parseInt(hex, 16));
+          i += 2;
+        } else {
+          bytes.push(qText.charCodeAt(i));
+        }
+      }
+      return Utilities.newBlob(bytes, Utilities.Charset.UTF_8).getDataAsString();
+    }
+    return text;
+  });
+}
+
+/**
+ * Audits sender alignment for spoofing and VIP impersonation.
+ * @param {string} senderHeader The raw From header.
+ * @param {string} internalDomain The domain to protect.
+ * @param {string[]} vipList List of VIP names.
+ * @return {Object} Alignment audit results.
+ */
+function auditSenderAlignment(senderHeader, internalDomain, vipList) {
+  const result = {
+    isSpoofed: false,
+    penaltyWeight: 0,
+    details: []
+  };
+
+  if (!senderHeader) return result;
+
+  const decodedHeader = decodeMimeHeader(senderHeader);
+
+  // Extract email and display name
+  const emailMatch = decodedHeader.match(/<([^>]+)>/);
+  const emailAddress = emailMatch ? emailMatch[1].toLowerCase() : decodedHeader.toLowerCase().trim();
+  const displayName = decodedHeader.replace(/<[^>]+>/g, "").replace(/["']/g, "").trim();
+  const lowerDisplayName = displayName.toLowerCase();
+
+  const senderDomain = emailAddress.split("@")[1] || "";
+  const isInternalEmail = senderDomain === internalDomain.toLowerCase();
+
+  // Rule 1: Internal Domain Impersonation in Display Name
+  const lowerInternalDomain = internalDomain.toLowerCase();
+  const domainParts = lowerInternalDomain.split('.');
+  const domainName = domainParts[0]; // e.g., "spotify" from "spotify.com"
+
+  if ((lowerDisplayName.includes(lowerInternalDomain) || lowerDisplayName.includes(domainName)) && !isInternalEmail) {
+    result.isSpoofed = true;
+    result.penaltyWeight += CONSTANTS.SENDER_ALIGNMENT_PENALTY;
+    result.details.push("CRITICAL: Display name implies internal domain, but origin is external.");
+  }
+
+  // Rule 2: VIP Impersonation (Direct & Typosquatting)
+  let vipFound = false;
+  vipList.forEach(vip => {
+    if (vipFound) return;
+    const lowerVip = vip.toLowerCase();
+
+    // Direct Match
+    if (lowerDisplayName.includes(lowerVip) && !isInternalEmail) {
+      result.isSpoofed = true;
+      result.penaltyWeight += CONSTANTS.VIP_IMPERSONATION_PENALTY;
+      result.details.push(`HIGH: Direct impersonation of VIP "${vip}" detected from external source.`);
+      vipFound = true;
+      return;
+    }
+
+    // Typosquatting Detection in Display Name
+    const nameParts = lowerDisplayName.split(/\s+/);
+    const vipParts = lowerVip.split(/\s+/);
+
+    nameParts.forEach(part => {
+      if (vipFound) return;
+      vipParts.forEach(vPart => {
+        if (vipFound) return;
+        if (part !== vPart && part.length > 3 && vPart.length > 3) {
+          const distance = levenshteinDistance(part, vPart);
+          if (distance === 1) {
+            result.isSpoofed = true;
+            result.penaltyWeight += CONSTANTS.VIP_TYPOSQUAT_PENALTY;
+            result.details.push(`MEDIUM: Potential typosquatting of VIP name part "${vPart}" as "${part}".`);
+            vipFound = true;
+          }
+        }
+      });
+    });
+  });
+
+  return result;
 }
 
 /**

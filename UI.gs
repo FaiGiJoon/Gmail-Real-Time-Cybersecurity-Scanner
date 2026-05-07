@@ -154,6 +154,11 @@ function calculateSecurityScore(data) {
     points -= CONSTANTS.SPOTIFY_IMPERSONATION_PENALTY;
   }
 
+  // Sender Alignment & VIP Impersonation Penalty
+  if (data.alignmentPenalty) {
+    points -= data.alignmentPenalty;
+  }
+
   // General warnings deduction (-20 each, excluding those already penalized)
   const generalWarnings = warnings.filter(w =>
     !w.includes('Link text mismatch') &&

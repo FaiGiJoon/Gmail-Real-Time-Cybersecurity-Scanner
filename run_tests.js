@@ -68,7 +68,12 @@ const mockUtilities = {
   unzip: () => { throw new Error('password'); }, // To test encrypted zip detection
   computeDigest: () => [1, 2, 3],
   DigestAlgorithm: { SHA_256: 'SHA_256' },
-  base64Encode: () => 'base64'
+  base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
+  base64Decode: (str) => Buffer.from(str, 'base64'),
+  newBlob: (data) => ({
+    getDataAsString: () => (Array.isArray(data) ? Buffer.from(data) : Buffer.from(data.toString())).toString()
+  }),
+  Charset: { UTF_8: 'UTF_8' }
 };
 
 const context = {

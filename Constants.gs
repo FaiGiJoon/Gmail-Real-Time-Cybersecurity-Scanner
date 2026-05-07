@@ -59,5 +59,12 @@ const CONSTANTS = {
   RELAY_AUDIT_PENALTY: 35,
   HIDDEN_LINK_PENALTY: 25,
   SPOTIFY_IMPERSONATION_PENALTY: 40,
-  SECURITY_REVIEW_LABEL: 'Security Review'
+  SECURITY_REVIEW_LABEL: 'Security Review',
+
+  // Sender Identity & Domain Alignment
+  INTERNAL_DOMAIN: 'spotify.com',
+  VIP_LIST: ['Daniel Ek', 'Martin Lorentzon', 'Paul Vogel', 'Dustin Hoffman'],
+  SENDER_ALIGNMENT_PENALTY: 35,
+  VIP_IMPERSONATION_PENALTY: 30,
+  VIP_TYPOSQUAT_PENALTY: 20
 };

@@ -20,6 +20,9 @@ function runTests() {
   testSpotifyImpersonation();
   testAuditRelayPath();
   testHiddenLinkDetection();
+  testDecodeMimeHeader();
+  testAuditSenderAlignment();
+  testLevenshteinDistanceOptimized();
 
   console.log('All tests completed.');
 }
@@ -418,4 +421,92 @@ function testHiddenLinkDetection() {
   } else {
     console.error(`FAILED: Hidden Link Detection. Links: ${JSON.stringify(links)}`);
   }
+}
+
+function testDecodeMimeHeader() {
+  console.log('Testing decodeMimeHeader...');
+  const cases = [
+    { input: '=?UTF-8?B?SmFuZSBEb2U=?=', expected: 'Jane Doe' },
+    { input: '=?UTF-8?Q?Jane_Doe?=', expected: 'Jane Doe' },
+    { input: '=?UTF-8?Q?Daniel_Ek?= <daniel@spotify.com>', expected: 'Daniel Ek <daniel@spotify.com>' },
+    { input: 'Normal Header', expected: 'Normal Header' },
+    { input: '=?UTF-8?Q?J=C3=BCrgen?= <juergen@example.com>', expected: 'Jürgen <juergen@example.com>' }
+  ];
+
+  cases.forEach(c => {
+    const result = decodeMimeHeader(c.input);
+    if (result !== c.expected) {
+      console.error(`FAILED: input="${c.input}". Expected "${c.expected}", got "${result}"`);
+    } else {
+      console.log(`PASSED: decodeMimeHeader for "${c.input}"`);
+    }
+  });
+}
+
+function testAuditSenderAlignment() {
+  console.log('Testing auditSenderAlignment...');
+  const internalDomain = 'spotify.com';
+  const vips = ['Daniel Ek', 'Martin Lorentzon'];
+
+  const cases = [
+    {
+      header: '"Daniel Ek" <daniel@spotify.com>',
+      expectedSpoof: false,
+      expectedPenalty: 0
+    },
+    {
+      header: '"Daniel Ek" <daniel@evil.com>',
+      expectedSpoof: true,
+      expectedPenalty: CONSTANTS.VIP_IMPERSONATION_PENALTY
+    },
+    {
+      header: '"Danel Ek" <daniel@evil.com>',
+      expectedSpoof: true,
+      expectedPenalty: CONSTANTS.VIP_TYPOSQUAT_PENALTY
+    },
+    {
+      header: '"Spotify Support" <support@evil.com>',
+      expectedSpoof: true,
+      expectedPenalty: CONSTANTS.SENDER_ALIGNMENT_PENALTY
+    },
+    {
+      header: '"Daniel Ek | Spotify" <scammer@evil.com>',
+      expectedSpoof: true,
+      expectedPenalty: CONSTANTS.SENDER_ALIGNMENT_PENALTY + CONSTANTS.VIP_IMPERSONATION_PENALTY
+    },
+    {
+      header: '=?UTF-8?B?RGFuaWVsIEVr?= <daniel@evil.com>',
+      expectedSpoof: true,
+      expectedPenalty: CONSTANTS.VIP_IMPERSONATION_PENALTY
+    }
+  ];
+
+  cases.forEach(c => {
+    const result = auditSenderAlignment(c.header, internalDomain, vips);
+    if (result.isSpoofed !== c.expectedSpoof || result.penaltyWeight !== c.expectedPenalty) {
+      console.error(`FAILED: header="${c.header}". Expected spoof=${c.expectedSpoof}, penalty=${c.expectedPenalty}. Got spoof=${result.isSpoofed}, penalty=${result.penaltyWeight}`);
+    } else {
+      console.log(`PASSED: auditSenderAlignment for "${c.header}"`);
+    }
+  });
+}
+
+function testLevenshteinDistanceOptimized() {
+  console.log('Testing optimized levenshteinDistance...');
+  const cases = [
+    { a: 'kitten', b: 'sitting', expected: 3 },
+    { a: 'Daniel', b: 'Danel', expected: 1 },
+    { a: 'Ek', b: 'Ek', expected: 0 },
+    { a: '', b: 'abc', expected: 3 },
+    { a: 'abc', b: '', expected: 3 }
+  ];
+
+  cases.forEach(c => {
+    const result = levenshteinDistance(c.a, c.b);
+    if (result !== c.expected) {
+      console.error(`FAILED: a="${c.a}", b="${c.b}". Expected ${c.expected}, got ${result}`);
+    } else {
+      console.log(`PASSED: levenshteinDistance for "${c.a}", "${c.b}"`);
+    }
+  });
 }
