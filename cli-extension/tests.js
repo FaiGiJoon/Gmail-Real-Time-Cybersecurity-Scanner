@@ -1,4 +1,15 @@
-import { calculateScore, isTyposquatted } from './scoring-engine.js';
+import { calculateScore, isTyposquatted, analyzeLinguisticDrift } from './scoring-engine.js';
+
+function testLinguisticDrift() {
+  console.log('Testing Linguistic Drift Analysis...');
+  const text = "URGENT: Immediate action required. Unauthorized access detected.";
+  const result = analyzeLinguisticDrift(text);
+  if (result.threatDetected && result.scorePenalty === 15) {
+    console.log('PASSED: Linguistic Drift');
+  } else {
+    console.error('FAILED: Linguistic Drift', result);
+  }
+}
 
 function testScoring() {
   console.log('Testing CLI Scoring Engine...');
@@ -26,4 +37,5 @@ function testScoring() {
   });
 }
 
+testLinguisticDrift();
 testScoring();

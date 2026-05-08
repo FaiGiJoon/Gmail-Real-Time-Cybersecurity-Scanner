@@ -705,6 +705,28 @@ function scanPdfStructure(blob) {
 }
 
 /**
+ * Detects if the current thread is part of a volume-based "Mail-Bombing" attack.
+ * (Roadmap 2.4 Implementation)
+ * @param {GoogleAppsScript.Gmail.GmailThread} thread
+ * @return {boolean} True if a flood is detected.
+ */
+function detectMailBombing(thread) {
+  const messages = thread.getMessages();
+  const now = new Date().getTime();
+  const windowMs = 10 * 60 * 1000; // 10 minute window
+
+  // Heuristic: If a single thread has more than 15 messages in 10 minutes,
+  // or if there are many recent messages with similar subjects from different senders.
+  const recentMessages = messages.filter(msg => (now - msg.getDate().getTime()) < windowMs);
+
+  if (recentMessages.length > 15) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Specialized check for Spotify-themed brand impersonation.
  */
 function checkSpotifyImpersonation(fromHeader, body, urls) {

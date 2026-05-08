@@ -127,6 +127,11 @@ function runSecurityScan(message, isDeepScan) {
   const relayWarnings = auditRelayPath(message);
   warnings.push(...relayWarnings);
 
+  // Mail-Bombing Detection (Roadmap 2.4)
+  if (detectMailBombing(message.getThread())) {
+    warnings.push("CRITICAL: Mail-bombing/DoS flood detected on this thread. High volume of recent messages.");
+  }
+
   // Add attachment warnings
   warnings.push(...attachmentWarnings);
 
