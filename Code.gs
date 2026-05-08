@@ -112,10 +112,15 @@ function runSecurityScan(message, isDeepScan) {
     warnings.push('DMARC authentication failed. This email may be spoofed.');
   }
 
-  // Sender Verification
+  // Sender Verification & Alignment Audit
   const senderVerified = verifySender(message);
   if (!senderVerified) {
     warnings.push('The "From" display name does not match the actual sender address.');
+  }
+
+  const alignmentAudit = auditSenderAlignment(from, CONSTANTS.INTERNAL_DOMAIN, CONSTANTS.VIP_LIST);
+  if (alignmentAudit.isSpoofed) {
+    warnings.push(...alignmentAudit.details);
   }
 
   // Relay Auditing
@@ -144,7 +149,8 @@ function runSecurityScan(message, isDeepScan) {
     linguisticThreats: linguisticThreats,
     maliciousQrUrls: maliciousQrUrls,
     hasMalware: hasMalware,
-    isSpotifyImpersonation: isSpotifyImpersonation
+    isSpotifyImpersonation: isSpotifyImpersonation,
+    alignmentPenalty: alignmentAudit.penaltyWeight
   };
 }
 
