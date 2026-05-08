@@ -23,6 +23,7 @@ function runTests() {
   testDecodeMimeHeader();
   testAuditSenderAlignment();
   testLevenshteinDistanceOptimized();
+  testMailBombingDetection();
 
   console.log('All tests completed.');
 }
@@ -348,7 +349,8 @@ function testSpotifyImpersonation() {
     getReplyTo: () => 'spotify-billing@gmail.com',
     getAttachments: () => [],
     getId: () => 'spotify_test_id',
-    getRawContent: () => 'From: "Spotify Support" <spotify-billing@gmail.com>\r\nSubject: Payment Failed'
+    getRawContent: () => 'From: "Spotify Support" <spotify-billing@gmail.com>\r\nSubject: Payment Failed',
+    getThread: () => ({ getMessages: () => [] })
   };
 
   const scanData = runSecurityScan(mockMessage, false);
@@ -441,6 +443,28 @@ function testDecodeMimeHeader() {
       console.log(`PASSED: decodeMimeHeader for "${c.input}"`);
     }
   });
+}
+
+function testMailBombingDetection() {
+  console.log('Testing Mail-Bombing Detection...');
+
+  const now = new Date();
+  const recentMsg = { getDate: () => now };
+  const oldMsg = { getDate: () => new Date(now.getTime() - 20 * 60 * 1000) };
+
+  const mockThreadFlood = {
+    getMessages: () => Array(20).fill(recentMsg)
+  };
+
+  const mockThreadNormal = {
+    getMessages: () => [recentMsg, oldMsg, oldMsg]
+  };
+
+  if (detectMailBombing(mockThreadFlood) === true && detectMailBombing(mockThreadNormal) === false) {
+    console.log('PASSED: Mail-Bombing Detection');
+  } else {
+    console.error('FAILED: Mail-Bombing Detection');
+  }
 }
 
 function testAuditSenderAlignment() {

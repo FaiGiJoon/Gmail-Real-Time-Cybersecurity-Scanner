@@ -25,6 +25,26 @@ export const CONSTANTS = {
   URL_REGEX: /https?:\/\/[^\s<"']+/g
 };
 
+/**
+ * Placeholder for Linguistic Drift and Sentiment Analysis (Roadmap 2.2).
+ * In a production 2026 environment, this would call Vertex AI or a local LLM.
+ */
+export function analyzeLinguisticDrift(text) {
+  // Placeholder: detect high-pressure sentiment or synthetic anomalies.
+  const highPressureRegex = /urgent|immediate action|unauthorized|restricted/gi;
+  const count = (text.match(highPressureRegex) || []).length;
+
+  if (count > 2) {
+    return {
+      threatDetected: true,
+      scorePenalty: 15,
+      detail: "High-pressure linguistic cues detected (Potential AI-generated lure)."
+    };
+  }
+
+  return { threatDetected: false, scorePenalty: 0 };
+}
+
 export function calculateScore(data) {
   let points = 100;
   const warnings = data.warnings || [];
