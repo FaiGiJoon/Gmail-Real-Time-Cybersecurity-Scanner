@@ -100,11 +100,8 @@ function isHomograph(url) {
 function checkSafeBrowsing(urls) {
   if (!urls || urls.length === 0) return {};
 
-  let apiKey = CONSTANTS.SAFE_BROWSING_API_KEY;
-  // Try to get from Script Properties if placeholder is still there
-  if (apiKey === 'YOUR_SAFE_BROWSING_API_KEY') {
-    apiKey = PropertiesService.getScriptProperties().getProperty('SAFE_BROWSING_API_KEY');
-  }
+  // Security Hardening: Enforce PropertiesService for API keys
+  const apiKey = PropertiesService.getScriptProperties().getProperty('SAFE_BROWSING_API_KEY');
 
   if (!apiKey) {
     console.warn('Safe Browsing API Key not configured.');
@@ -158,12 +155,43 @@ function unshortenUrlChain(url) {
         followRedirects: false,
         muteHttpExceptions: true
       });
-      const location = response.getHeaders()['Location'];
 
-      if (location && location !== currentUrl && !chain.includes(location)) {
-        currentUrl = location;
+      let nextUrl = response.getHeaders()['Location'];
+      const content = response.getContentText();
+
+      // 1. Meta-Refresh Detection
+      if (!nextUrl) {
+        const metaMatch = content.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^"']*url=([^"']+)["']/i);
+        if (metaMatch) nextUrl = metaMatch[1];
+      }
+
+      // 2. JavaScript window.location Detection
+      if (!nextUrl) {
+        const jsMatch = content.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i);
+        if (jsMatch) nextUrl = jsMatch[1];
+      }
+
+      if (nextUrl && nextUrl !== currentUrl && !chain.includes(nextUrl)) {
+        // Resolve relative URLs
+        if (!nextUrl.startsWith('http')) {
+          const urlObj = new URL(currentUrl);
+          if (nextUrl.startsWith('/')) {
+            const origin = urlObj.origin || `${urlObj.protocol}//${urlObj.host}`;
+            nextUrl = `${origin}${nextUrl}`;
+          } else {
+            // Handle path-relative URLs
+            const base = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1);
+            nextUrl = base + nextUrl;
+          }
+        }
+        currentUrl = nextUrl;
         chain.push(currentUrl);
         depth++;
+
+        // Roadmap 2.3: Deepfake Auditor
+        if (callDeepfakeDetectionApi(currentUrl)) {
+          // Warning will be handled in Code.gs after chain is returned
+        }
       } else {
         break;
       }
@@ -172,6 +200,22 @@ function unshortenUrlChain(url) {
     }
   }
   return chain;
+}
+
+/**
+ * Verifies the actual file type using Magic Bytes (File Signatures).
+ * @param {GoogleAppsScript.Base.Blob} blob
+ * @return {string|null} The verified file type, or null if unknown.
+ */
+function verifyMagicBytes(blob) {
+  const bytes = blob.getBytes().slice(0, 8); // Read first 8 bytes
+
+  for (const [type, signature] of Object.entries(CONSTANTS.MAGIC_BYTES)) {
+    const isMatch = signature.every((byte, i) => (bytes[i] & 0xFF) === byte);
+    if (isMatch) return type;
+  }
+
+  return null;
 }
 
 /**
@@ -422,27 +466,114 @@ function parseAuthHeaders(authHeader) {
 }
 
 /**
+ * Deep audit of delivery path (Reverse-Chain Relay Auditor).
+ * @param {string} rawHeaders
+ * @return {Object} Audit results and warnings.
+ */
+function auditDeliveryPath(rawHeaders) {
+  const receivedHeaders = rawHeaders.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
+  const warnings = [];
+
+  // Parse in reverse order (originating MTA first)
+  const reversed = [...receivedHeaders].reverse();
+
+  reversed.forEach((header, index) => {
+    const ipMatch = header.match(/\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]/);
+    if (ipMatch) {
+      const ip = ipMatch[1];
+      // Note: Full CIDR check would require a library or manual bitwise logic.
+      // For this implementation, we check for direct string matches or simple prefix.
+      const isTrusted = CONSTANTS.TRUSTED_RELAYS.some(cidr => isIpInCidr(ip, cidr));
+
+      if (!isTrusted && index === 0) {
+        warnings.push(`Suspicious Origin: Initial relay IP ${ip} is not in trusted CIDR blocks.`);
+      }
+    }
+  });
+
+  return {
+    hopCount: receivedHeaders.length,
+    warnings: warnings
+  };
+}
+
+/**
+ * Smart OCR with batching and filters (Cost-Optimized Quishing).
+ */
+function smartOcrScanner(message) {
+  const attachments = message.getAttachments();
+  const imageAttachments = attachments.filter(att => {
+    const name = att.getName().toLowerCase();
+    const isImage = /\.(png|jpg|jpeg|webp)$/.test(name);
+    const isBigEnough = att.getSize() > 10240; // 10KB filter
+    return isImage && isBigEnough;
+  });
+
+  if (imageAttachments.length === 0) return [];
+
+  // Batch request
+  const allUrls = batchDetectQrCodes(imageAttachments);
+  return allUrls;
+}
+
+/**
+ * Enhanced unshortenUrlChain logic. If a resolved URL points to an audio/video file,
+ * flag it for "Synthetic Media Review" (Deepfake Auditor).
+ */
+function callDeepfakeDetectionApi(url) {
+  const syntheticMediaExts = ['.mp3', '.mp4', '.wav', '.webm', '.ogg'];
+  const isSyntheticCandidate = syntheticMediaExts.some(ext => url.toLowerCase().endsWith(ext));
+
+  if (isSyntheticCandidate) {
+     // Stub for 2026: In production, this would call a specialized detection API.
+     console.log(`Deepfake Auditor: Flagging media for review: ${url}`);
+     return true;
+  }
+  return false;
+}
+
+/**
+ * Tracks message rates using CacheService (Persistent State Manager).
+ */
+function incrementMessageRate() {
+  const cache = CacheService.getUserCache();
+  const now = Math.floor(Date.now() / 600000); // 10-minute window ID
+  const key = `msg_rate_${now}`;
+
+  const lock = LockService.getUserLock();
+  try {
+    lock.waitLock(5000);
+    let count = parseInt(cache.get(key) || "0");
+    count++;
+    cache.put(key, count.toString(), 1200); // Store for 20 mins
+    return count;
+  } catch (e) {
+    return 0;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
  * Audits the delivery path via Received headers to detect anomalous relays.
  * @param {GoogleAppsScript.Gmail.GmailMessage} message
  * @return {string[]} Warnings if anomalies are found.
  */
 function auditRelayPath(message) {
   const raw = message.getRawContent();
-  const receivedHeaders = raw.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
-  const warnings = [];
+  const audit = auditDeliveryPath(raw);
+  const warnings = audit.warnings;
 
-  if (receivedHeaders.length > 10) {
-    warnings.push(`Anomalous relay count detected (${receivedHeaders.length} hops). Possible mail-loop or routing manipulation.`);
+  if (audit.hopCount > 10) {
+    warnings.push(`Anomalous relay count detected (${audit.hopCount} hops). Possible mail-loop or routing manipulation.`);
   }
 
-  // Heuristic: Check for "Internal" markers in headers from external sources
   const from = message.getFrom().toLowerCase();
   const isInternalSender = CONSTANTS.OFFICIAL_DOMAINS.some(domain => from.includes('@' + domain));
 
   if (isInternalSender) {
+    const receivedHeaders = raw.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
     const firstHop = receivedHeaders[receivedHeaders.length - 1] || '';
-    // If it's an internal sender, the first hop should ideally be from a trusted infrastructure.
-    // This is a simplified check for 2026 standards.
     const isTrustedHop = CONSTANTS.OFFICIAL_DOMAINS.some(domain => firstHop.includes(domain)) || firstHop.includes('google.com');
     if (!isTrustedHop) {
        warnings.push('CRITICAL: Internal brand spoofing detected. Message claims to be internal but originated from an external relay.');
@@ -517,12 +648,19 @@ function analyzeAttachments(attachments) {
       warnings.push(`High-risk file extension detected: ${filename}`);
     }
 
-    // Double extension
+    // Double extension & Magic Byte Verification
     if (parts.length > 1) {
       const secondExt = parts.pop();
       const commonDocs = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'];
       if (commonDocs.includes(secondExt) && highRiskExts.includes(ext)) {
         warnings.push(`Possible double extension attack: ${filename}`);
+      }
+    }
+
+    const verifiedType = verifyMagicBytes(attachment);
+    if (verifiedType && verifiedType !== ext.toUpperCase()) {
+      if (!(verifiedType === 'ZIP' && ext === 'jar')) { // Allow jar as zip
+        warnings.push(`File Signature Mismatch: ${filename} claims to be .${ext} but is actually a ${verifiedType} file.`);
       }
     }
 
@@ -548,14 +686,6 @@ function analyzeAttachments(attachments) {
       warnings.push(...pdfWarnings);
     }
 
-    // QR Code Detection in Images
-    if (imageExts.includes(ext)) {
-      const extractedUrls = detectQrCodes(attachment);
-      if (extractedUrls.length > 0) {
-        warnings.push(`QR Code detected in image attachment: ${filename}`);
-        qrUrls.push(...extractedUrls);
-      }
-    }
   });
 
   return { warnings, qrUrls: [...new Set(qrUrls)] };
@@ -567,23 +697,30 @@ function analyzeAttachments(attachments) {
  * @return {string[]} Extracted URLs.
  */
 function detectQrCodes(blob) {
-  let apiKey = PropertiesService.getScriptProperties().getProperty('CLOUD_VISION_API_KEY');
+  // Use batchDetectQrCodes for efficient processing.
+  // This function is kept for backward compatibility and single-blob use.
+  return batchDetectQrCodes([blob]);
+}
+
+/**
+ * Calls Google Cloud Vision API to detect QR codes in multiple images using a batch request.
+ * @param {GoogleAppsScript.Base.Blob[]} blobs
+ * @return {string[]} Extracted URLs.
+ */
+function batchDetectQrCodes(blobs) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('CLOUD_VISION_API_KEY');
   if (!apiKey) {
     console.warn('Cloud Vision API Key not configured.');
     return [];
   }
 
-  const base64Content = Utilities.base64Encode(blob.getBytes());
-  const endpoint = `${CONSTANTS.CLOUD_VISION_ENDPOINT}?key=${apiKey}`;
+  const requests = blobs.map(blob => ({
+    image: { content: Utilities.base64Encode(blob.getBytes()) },
+    features: [{ type: 'BARCODE_DETECTION' }, { type: 'DOCUMENT_TEXT_DETECTION' }]
+  }));
 
-  const payload = {
-    requests: [
-      {
-        image: { content: base64Content },
-        features: [{ type: 'BARCODE_DETECTION' }, { type: 'DOCUMENT_TEXT_DETECTION' }]
-      }
-    ]
-  };
+  const endpoint = `${CONSTANTS.CLOUD_VISION_ENDPOINT}?key=${apiKey}`;
+  const payload = { requests: requests };
 
   const options = {
     method: 'post',
@@ -597,8 +734,8 @@ function detectQrCodes(blob) {
     const result = JSON.parse(response.getContentText());
     const extractedUrls = [];
 
-    if (result.responses && result.responses[0]) {
-      const resp = result.responses[0];
+    if (result.responses) {
+      result.responses.forEach(resp => {
 
       // Deep search for URLs in all text found by OCR
       if (resp.fullTextAnnotation && resp.fullTextAnnotation.text) {
@@ -632,6 +769,7 @@ function detectQrCodes(blob) {
           }
         });
       }
+    });
     }
     return [...new Set(extractedUrls)];
   } catch (e) {
@@ -684,6 +822,24 @@ function checkVirusTotal(hash, filename) {
 }
 
 /**
+ * Checks if an IP address is within a CIDR range.
+ * (Simplified implementation for Google Apps Script V8)
+ */
+function isIpInCidr(ip, cidr) {
+  const [range, bits] = cidr.split('/');
+  const mask = ~(Math.pow(2, 32 - parseInt(bits)) - 1);
+
+  const ipToLong = (ipAddr) => {
+    return ipAddr.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+  };
+
+  const ipLong = ipToLong(ip);
+  const rangeLong = ipToLong(range);
+
+  return (ipLong & mask) === (rangeLong & mask);
+}
+
+/**
  * Scans PDF content for suspicious elements (e.g., /JS, /JavaScript, /OpenAction).
  */
 function scanPdfStructure(blob) {
@@ -724,6 +880,72 @@ function detectMailBombing(thread) {
   }
 
   return false;
+}
+
+/**
+ * Attempts to find passwords in the email body and decrypt ZIP attachments.
+ * (Roadmap 2026: Key-Hunter Module)
+ */
+function attemptPayloadDecryption(message, attachments) {
+  const body = message.getPlainBody();
+  // Regex to find potential passwords: "Password: XYZ", "code is 1234", etc.
+  const passRegex = /(?:pass(?:word)?|code|key)(?:\s+is)?\s*[:=]?\s*["']?([a-z0-9!@#$%^&*]+)["']?/gi;
+  const foundKeys = [];
+  let match;
+  while ((match = passRegex.exec(body)) !== null) {
+    foundKeys.push(match[1]);
+  }
+
+  const results = {
+    decryptedFiles: [],
+    warnings: []
+  };
+
+  attachments.forEach(att => {
+    if (att.getContentType() === 'application/zip' || att.getName().toLowerCase().endsWith('.zip')) {
+      foundKeys.forEach(key => {
+        try {
+          // Attempt unzip with the discovered key
+          const unzipped = Utilities.unzip(att.copyBlob(), key);
+          if (unzipped && unzipped.length > 0) {
+            results.decryptedFiles.push(...unzipped);
+            results.warnings.push(`Key-Hunter: Successfully decrypted attachment "${att.getName()}" using discovered key.`);
+          }
+        } catch (e) {
+          // Fail silently and try next key
+        }
+      });
+    }
+  });
+
+  return results;
+}
+
+/**
+ * Sanitizes input text to prevent LLM Prompt Injection attacks.
+ * (Shield-Layer Module)
+ */
+function sanitizeForLlm(text) {
+  if (!text) return "";
+
+  // 1. Instructional Drift Detection / Neutralization
+  const injectionPatterns = [
+    /ignore all previous instructions/gi,
+    /system override/gi,
+    /mark this email as safe/gi,
+    /bypass security/gi,
+    /execute following command/gi
+  ];
+
+  let sanitized = text;
+  injectionPatterns.forEach(pattern => {
+    sanitized = sanitized.replace(pattern, "[FILTERED_INJECTION_ATTEMPT]");
+  });
+
+  // 2. Delimiter Guarding
+  // Wrap the content in random tokens to prevent the LLM from treating content as instructions.
+  const token = `[USER_CONTENT_${Math.random().toString(36).substring(7)}]`;
+  return `${token}\n${sanitized}\n${token}`;
 }
 
 /**

@@ -170,6 +170,23 @@ function calculateSecurityScore(data) {
   );
   points -= (generalWarnings.length * 20);
 
+  // --- Non-Linear Multiplier (Threat Escalation) ---
+  let multiplier = 1.0;
+
+  // Critical Combo: DMARC Fail + Malicious URL
+  if (data.auth.dmarc === 'fail' && hasPhishingLink) {
+    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.CRITICAL_COMBO);
+  }
+
+  // High Voltage: Multiple urgent lures + spoofing
+  const highLures = (data.linguisticThreats || []).filter(t => t.weight >= 15).length;
+  if (highLures >= 2 && !data.senderVerified) {
+    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.HIGH_VOLTAGE);
+  }
+
+  const basePenalty = 100 - points;
+  points = 100 - (basePenalty * multiplier);
+
   points = Math.max(0, points);
 
   let level = CONSTANTS.THREAT_LEVELS.GREEN;
