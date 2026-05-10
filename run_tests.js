@@ -21,6 +21,8 @@ const mockGmailApp = {
   getMessageById: (id) => ({
     getId: () => id,
     getThread: () => ({
+      getId: () => 'thread_' + id,
+      getMessages: () => [],
       moveToSpam: () => { console.log('Mocked moveToSpam called'); },
       addLabel: () => { console.log('Mocked addLabel called'); }
     }),
@@ -52,6 +54,18 @@ const mockUrlFetchApp = {
         getResponseCode: () => 200
       };
     }
+    if (url && url.includes('virustotal')) {
+      return {
+        getContentText: () => JSON.stringify({
+          data: {
+            attributes: {
+              last_analysis_stats: { malicious: 0 }
+            }
+          }
+        }),
+        getResponseCode: () => 200
+      };
+    }
     return {
       getHeaders: () => ({}),
       getResponseCode: () => 200,
@@ -61,7 +75,25 @@ const mockUrlFetchApp = {
 };
 
 const mockPropertiesService = {
-  getScriptProperties: () => ({ getProperty: () => 'MOCK_KEY' })
+  getScriptProperties: () => ({ getProperty: () => 'MOCK_KEY' }),
+  getUserProperties: () => ({
+    getProperty: () => null,
+    setProperty: () => {}
+  })
+};
+
+const mockCacheService = {
+  getUserCache: () => ({
+    get: (key) => null,
+    put: (key, val, sec) => {}
+  })
+};
+
+const mockLockService = {
+  getUserLock: () => ({
+    waitLock: () => {},
+    releaseLock: () => {}
+  })
 };
 
 const mockUtilities = {
@@ -80,6 +112,8 @@ const context = {
   CardService: mockCardService,
   UrlFetchApp: mockUrlFetchApp,
   PropertiesService: mockPropertiesService,
+  CacheService: mockCacheService,
+  LockService: mockLockService,
   Utilities: mockUtilities,
   GmailApp: mockGmailApp,
   console: console,
@@ -94,7 +128,7 @@ function loadFile(path) {
 }
 
 loadFile('Constants.gs');
-loadFile('SecurityUtils.gs');
+loadFile('SecurityEngine.gs');
 loadFile('UI.gs');
 loadFile('Code.gs');
 loadFile('tests.js');

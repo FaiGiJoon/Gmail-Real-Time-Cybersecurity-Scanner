@@ -22,19 +22,62 @@ function getContextualAddOn(e) {
  * @return {Object} Scan results.
  */
 function runSecurityScan(message, isDeepScan) {
+  const messageId = message.getId();
+  const threadId = message.getThread().getId();
+  const properties = PropertiesService.getUserProperties();
+  const checkpointKey = `checkpoint_${threadId}`;
+
+  // State Management: Check if this message was already scanned in this session
+  const lastScanned = properties.getProperty(checkpointKey);
+  if (lastScanned === messageId) {
+    console.log(`Resuming/Skipping: Message ${messageId} already scanned.`);
+    // In a full implementation, we'd return cached scanData from CacheService here.
+    // For now, we skip and return a basic "Already Scanned" object to save quotas.
+    return {
+      messageId: messageId,
+      warnings: ["Message previously scanned. Resuming..."],
+      auth: { spf: 'unknown', dkim: 'unknown', dmarc: 'unknown' },
+      urls: [],
+      attachmentsCount: 0
+    };
+  }
+
+  // Set checkpoint
+  properties.setProperty(checkpointKey, messageId);
+
   const body = message.getPlainBody();
   const htmlBody = message.getBody();
   const from = message.getFrom();
-  const attachments = message.getAttachments();
-  const messageId = message.getId();
+  let attachments = message.getAttachments();
+
+  // 1. Shield-Layer: Sanitize content for internal analysis
+  const sanitizedBody = sanitizeForLlm(body);
+
+  // 2. Key-Hunter: Autonomous Decryption
+  const decryptionResults = attemptPayloadDecryption(message, attachments);
+  const decryptedFiles = decryptionResults.decryptedFiles;
+  const decryptionWarnings = decryptionResults.warnings;
+
+  // Add decrypted files to the pool for scanning
+  if (decryptedFiles.length > 0) {
+    attachments = [...attachments, ...decryptedFiles];
+  }
 
   const htmlLinks = extractHtmlLinks(htmlBody);
-  const plainUrls = extractUrls(body);
+  // Use sanitized body for URL extraction to prevent prompt injection lures from being treated as safe
+  const plainUrls = extractUrls(sanitizedBody);
 
-  // Attachment Analysis (includes QR detection)
+  // 3. Smart OCR (Quishing)
+  const ocrUrls = smartOcrScanner(message);
+
+  // Attachment Analysis
   const attachmentData = analyzeAttachments(attachments);
-  const attachmentWarnings = attachmentData.warnings;
-  const qrUrls = attachmentData.qrUrls;
+  const attachmentWarnings = [...attachmentData.warnings, ...decryptionWarnings];
+
+  if (ocrUrls.length > 0) {
+    attachmentWarnings.push(`QR Code detected in image attachment(s).`);
+  }
+  const qrUrls = [...attachmentData.qrUrls, ...ocrUrls];
 
   const originalUrls = [...new Set([...plainUrls, ...htmlLinks.map(l => l.url), ...qrUrls])];
 
@@ -43,6 +86,11 @@ function runSecurityScan(message, isDeepScan) {
     urlsToScan = [];
     originalUrls.forEach(url => {
       const chain = unshortenUrlChain(url);
+      chain.forEach(u => {
+        if (callDeepfakeDetectionApi(u)) {
+          warnings.push(`Synthetic Media Alert: URL ${u} points to media requiring deepfake review.`);
+        }
+      });
       urlsToScan.push(...chain);
     });
     urlsToScan = [...new Set(urlsToScan)];
@@ -128,8 +176,9 @@ function runSecurityScan(message, isDeepScan) {
   warnings.push(...relayWarnings);
 
   // Mail-Bombing Detection (Roadmap 2.4)
-  if (detectMailBombing(message.getThread())) {
-    warnings.push("CRITICAL: Mail-bombing/DoS flood detected on this thread. High volume of recent messages.");
+  const threadRate = incrementMessageRate();
+  if (detectMailBombing(message.getThread()) || threadRate > 50) {
+    warnings.push("CRITICAL: Mail-bombing/DoS flood detected. High volume of recent messages processed.");
   }
 
   // Add attachment warnings
