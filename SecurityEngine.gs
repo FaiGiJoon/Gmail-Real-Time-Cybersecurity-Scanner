@@ -997,3 +997,78 @@ function checkSpotifyImpersonation(fromHeader, body, urls) {
 
   return warnings;
 }
+
+/**
+ * Detects linguistic drift and instructional anomalies (Roadmap 2.2).
+ * @param {string} text
+ * @return {Object} Detection results.
+ */
+function detectInstructionalDrift(text) {
+  if (!text) return { isAnomaly: false, warnings: [], penalty: 0 };
+
+  const warnings = [];
+  let penalty = 0;
+
+  // 1. Instructional Injection Check
+  const injectionPatterns = [
+    /ignore all previous instructions/gi,
+    /system override/gi,
+    /bypass security/gi,
+    /mark this email as safe/gi
+  ];
+
+  if (injectionPatterns.some(p => p.test(text))) {
+    warnings.push("CRITICAL: Instructional drift detected. Message contains potential LLM prompt injection attempts.");
+    penalty += 25;
+  }
+
+  // 2. Synthetic Pressure Patterns
+  const syntheticRegex = /(please act now|verify your account immediately|failure to comply|unauthorized access detected)/gi;
+  const matches = text.match(syntheticRegex) || [];
+  if (matches.length >= 2) {
+    warnings.push("HIGH: Repetitive synthetic pressure patterns detected (Linguistic Drift).");
+    penalty += 15;
+  }
+
+  return {
+    isAnomaly: penalty > 0,
+    warnings: warnings,
+    penalty: penalty
+  };
+}
+
+/**
+ * General utility to detect brand keywords in suspicious domains.
+ * @param {string[]} urls
+ * @param {string[]} brands
+ * @return {string[]} Warnings
+ */
+function checkKeywordPhishing(urls, brands) {
+  const warnings = [];
+  urls.forEach(url => {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+
+      // Check if hostname is an official domain first
+      const isKnownOfficial = CONSTANTS.OFFICIAL_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+      if (isKnownOfficial) return;
+
+      brands.forEach(brand => {
+        // Use regex with word boundaries or separators to avoid false positives like "pineapple.com"
+        // This looks for the brand as a standalone label in the domain (e.g., "apple-login.com" or "apple.secure.com")
+        const brandRegex = new RegExp(`(^|[.-])${brand}([.-]|$)`, 'i');
+
+        if (brandRegex.test(hostname)) {
+          // Double check it's not a generic official TLD-based domain (e.g., brand.org, brand.net)
+          const genericOfficial = [brand + '.com', brand + '.org', brand + '.net', brand + '.edu', brand + '.gov'];
+          const isOfficial = genericOfficial.some(d => hostname === d || hostname.endsWith('.' + d));
+
+          if (!isOfficial) {
+             warnings.push(`SUSPICIOUS: URL "${url}" uses the "${brand}" brand keyword but is not an official domain.`);
+          }
+        }
+      });
+    } catch (e) {}
+  });
+  return warnings;
+}

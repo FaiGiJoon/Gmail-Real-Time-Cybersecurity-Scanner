@@ -81,6 +81,7 @@ function runSecurityScan(message, isDeepScan) {
 
   const originalUrls = [...new Set([...plainUrls, ...htmlLinks.map(l => l.url), ...qrUrls])];
 
+  const warnings = [];
   let urlsToScan = originalUrls;
   if (isDeepScan) {
     urlsToScan = [];
@@ -95,8 +96,6 @@ function runSecurityScan(message, isDeepScan) {
     });
     urlsToScan = [...new Set(urlsToScan)];
   }
-
-  const warnings = [];
   const maliciousQrUrls = [];
 
   // Passive Link Mismatch Detection (Always run as it is a string operation)
@@ -147,6 +146,12 @@ function runSecurityScan(message, isDeepScan) {
     warnings.push(`Urgent/Suspicious language detected: ${linguisticThreats.map(t => t.keyword).join(', ')}`);
   }
 
+  // Instructional Drift Analysis (Roadmap 2.2)
+  const driftResults = detectInstructionalDrift(body);
+  if (driftResults.isAnomaly) {
+    warnings.push(...driftResults.warnings);
+  }
+
   // TLS Check
   const isTls = checkTLS(message);
 
@@ -184,9 +189,14 @@ function runSecurityScan(message, isDeepScan) {
   // Add attachment warnings
   warnings.push(...attachmentWarnings);
 
-  // Spotify Impersonation Check
+  // Spotify Impersonation Check (Legacy)
   const spotifyWarnings = checkSpotifyImpersonation(from, body, urlsToScan);
   warnings.push(...spotifyWarnings);
+
+  // Generalized Brand Keyword Phishing Check
+  const keywordWarnings = checkKeywordPhishing(urlsToScan, CONSTANTS.TYPOSQUAT_BRANDS);
+  warnings.push(...keywordWarnings);
+
   const isSpotifyImpersonation = spotifyWarnings.length > 0;
 
   const hasMalware = warnings.some(w => w.includes('malicious') || w.includes('Suspicious PDF'));
@@ -204,7 +214,7 @@ function runSecurityScan(message, isDeepScan) {
     maliciousQrUrls: maliciousQrUrls,
     hasMalware: hasMalware,
     isSpotifyImpersonation: isSpotifyImpersonation,
-    alignmentPenalty: alignmentAudit.penaltyWeight
+    alignmentPenalty: alignmentAudit.penaltyWeight + driftResults.penalty
   };
 }
 
