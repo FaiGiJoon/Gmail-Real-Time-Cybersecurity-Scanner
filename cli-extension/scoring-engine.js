@@ -1,7 +1,7 @@
 import * as levenshtein from 'levenshtein-edit-distance';
 
 export const CONSTANTS = {
-  TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook'],
+  TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook', 'spotify'],
   LINGUISTIC_WEIGHTS: {
     'urgent': 10,
     'immediate action': 10,
@@ -17,7 +17,15 @@ export const CONSTANTS = {
     'final notice': 15,
     'official request': 10,
     'restricted access': 15,
-    'gift card': 20
+    'gift card': 20,
+    'payment failed': 15,
+    'subscription suspended': 15,
+    'update billing': 15,
+    'premium account': 15
+  },
+  SCORING_MULTIPLIERS: {
+    'CRITICAL_COMBO': 1.5,
+    'HIGH_VOLTAGE': 1.25
   },
   QR_THREAT_PENALTY: 25,
   RELAY_AUDIT_PENALTY: 35,
@@ -26,23 +34,47 @@ export const CONSTANTS = {
 };
 
 /**
- * Placeholder for Linguistic Drift and Sentiment Analysis (Roadmap 2.2).
- * In a production 2026 environment, this would call Vertex AI or a local LLM.
+ * Linguistic Drift and Sentiment Analysis (Roadmap 2.2).
+ * Detects high-pressure AI-generated patterns, repetitive structural cues,
+ * and anomalous instructional language.
  */
 export function analyzeLinguisticDrift(text) {
-  // Placeholder: detect high-pressure sentiment or synthetic anomalies.
-  const highPressureRegex = /urgent|immediate action|unauthorized|restricted/gi;
-  const count = (text.match(highPressureRegex) || []).length;
+  if (!text) return { threatDetected: false, scorePenalty: 0 };
 
-  if (count > 2) {
-    return {
-      threatDetected: true,
-      scorePenalty: 15,
-      detail: "High-pressure linguistic cues detected (Potential AI-generated lure)."
-    };
+  const highPressureKeywords = ['urgent', 'immediate action', 'unauthorized', 'restricted', 'suspended', 'payment failed'];
+  const injectionPatterns = [/ignore all previous instructions/gi, /system override/gi, /bypass security/gi];
+
+  let scorePenalty = 0;
+  const details = [];
+
+  // 1. Keyword Density
+  const lowerText = text.toLowerCase();
+  const keywordCount = highPressureKeywords.filter(kw => lowerText.includes(kw)).length;
+  if (keywordCount >= 3) {
+    scorePenalty += 15;
+    details.push("High-density of pressure keywords detected.");
   }
 
-  return { threatDetected: false, scorePenalty: 0 };
+  // 2. Prompt Injection / Instructional Drift
+  const hasInjection = injectionPatterns.some(pattern => pattern.test(text));
+  if (hasInjection) {
+    scorePenalty += 25;
+    details.push("Instructional drift (Prompt Injection attempt) detected.");
+  }
+
+  // 3. Structural Synthetic Cues (Repetitive high-pressure phrases)
+  const syntheticRegex = /(please act now|verify your account immediately|failure to comply)/gi;
+  const syntheticMatches = text.match(syntheticRegex);
+  if (syntheticMatches && syntheticMatches.length >= 2) {
+    scorePenalty += 10;
+    details.push("Repetitive synthetic linguistic patterns detected.");
+  }
+
+  return {
+    threatDetected: scorePenalty > 0,
+    scorePenalty: Math.min(scorePenalty, 50),
+    details: details
+  };
 }
 
 export function calculateScore(data) {
@@ -76,11 +108,22 @@ export function calculateScore(data) {
     points -= CONSTANTS.HIDDEN_LINK_PENALTY;
   }
 
+  // Linguistic Drift Analysis (Roadmap 2.2)
+  const drift = analyzeLinguisticDrift(data.body);
+  if (drift.threatDetected) {
+    points -= drift.scorePenalty;
+    drift.details.forEach(detail => {
+      if (!warnings.includes(detail)) warnings.push(detail);
+    });
+  }
+
+  const linguisticThreatsCount = [];
   if (data.body) {
     const lowerBody = data.body.toLowerCase();
     for (const [keyword, weight] of Object.entries(CONSTANTS.LINGUISTIC_WEIGHTS)) {
       if (lowerBody.includes(keyword)) {
         points -= weight;
+        if (weight >= 15) linguisticThreatsCount.push(keyword);
       }
     }
   }
@@ -94,6 +137,22 @@ export function calculateScore(data) {
     !w.includes('QR Code detected')
   );
   points -= (generalWarnings.length * 20);
+
+  // --- Non-Linear Multiplier (Threat Escalation) ---
+  let multiplier = 1.0;
+
+  // Critical Combo: DMARC Fail + Malicious URL
+  if (data.authStatus?.dmarc === 'fail' && hasPhishingLink) {
+    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.CRITICAL_COMBO);
+  }
+
+  // High Voltage: Multiple urgent lures + spoofing
+  if (linguisticThreatsCount.length >= 2 && !data.senderVerified) {
+    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.HIGH_VOLTAGE);
+  }
+
+  const basePenalty = 100 - points;
+  points = 100 - (basePenalty * multiplier);
 
   return Math.max(0, points);
 }
