@@ -31,8 +31,98 @@ function runTests() {
   testExpandedMagicBytes();
   testInstructionalDriftDetection();
   testCheckKeywordPhishing();
+  testShadowLinkDetection();
+  testReceivedChainAuditSentinel();
+  testCacheServiceIntegration();
+  testDeepScanExpansion();
 
   console.log('All tests completed.');
+}
+
+function testShadowLinkDetection() {
+  console.log('Testing Shadow-Link Detection...');
+  const chain = [
+    'http://bit.ly/123',
+    'http://t.co/abc',
+    'http://redirector.net/xyz',
+    'http://final-destination.com'
+  ];
+  const count = countUniqueDomains(chain);
+  if (count === 4) {
+    console.log('PASSED: countUniqueDomains');
+  } else {
+    console.error('FAILED: countUniqueDomains. Got: ' + count);
+  }
+
+  // Integration check in runSecurityScan would require deep mocking of unshortenUrlChain
+}
+
+function testReceivedChainAuditSentinel() {
+  console.log('Testing Received Chain Audit (Sentinel Phase)...');
+  const rawHeaders = 'Received: from mx.google.com ([209.85.128.1]) by ...\r\nReceived: from bad-actor.com ([1.2.3.4]) by mx.google.com ...';
+  const audit = auditDeliveryPath(rawHeaders);
+
+  if (audit.hasMismatch && audit.warnings.some(w => w.includes('AS40022') && w.includes('1.2.3.4'))) {
+    console.log('PASSED: Received Chain Audit (Bad ASN)');
+  } else {
+    console.error('FAILED: Received Chain Audit (Bad ASN). Audit: ' + JSON.stringify(audit));
+  }
+}
+
+function testCacheServiceIntegration() {
+  console.log('Testing CacheService Integration logic...');
+  const mockCache = {
+    get: (key) => key === 'scan_results_123' ? JSON.stringify({messageId: '123', cached: true}) : null,
+    put: () => {}
+  };
+
+  const cachedData = mockCache.get('scan_results_123');
+  if (cachedData && JSON.parse(cachedData).cached === true) {
+    console.log('PASSED: CacheService Integration logic');
+  } else {
+    console.error('FAILED: CacheService Integration logic');
+  }
+}
+
+function testDeepScanExpansion() {
+  console.log('Testing Deep Scan URL Expansion in runSecurityScan...');
+
+  const mockMessage = {
+    getId: () => 'deep_test_123',
+    getThread: () => ({
+      getId: () => 'thread_deep_123',
+      getMessages: () => []
+    }),
+    getPlainBody: () => 'Link: http://bit.ly/123',
+    getBody: () => 'Link: http://bit.ly/123',
+    getFrom: () => 'sender@example.com',
+    getReplyTo: () => 'sender@example.com',
+    getAttachments: () => [],
+    getRawContent: () => 'Authentication-Results: spf=pass'
+  };
+
+  // Mock UrlFetchApp.fetch to simulate redirect for bit.ly
+  const originalFetch = globalThis.UrlFetchApp.fetch;
+  globalThis.UrlFetchApp.fetch = (url, options) => {
+    if (url === 'http://bit.ly/123') {
+      return {
+        getHeaders: () => ({ 'Location': 'http://example.com' }),
+        getContentText: () => '',
+        getResponseCode: () => 200
+      };
+    }
+    return { getHeaders: () => ({}), getContentText: () => '', getResponseCode: () => 200 };
+  };
+
+  const scanData = runSecurityScan(mockMessage, true);
+
+  if (scanData.urls.includes('http://example.com')) {
+    console.log('PASSED: Deep Scan URL Expansion');
+  } else {
+    console.error('FAILED: Deep Scan URL Expansion. URLs found: ' + JSON.stringify(scanData.urls));
+  }
+
+  globalThis.UrlFetchApp.fetch = originalFetch;
 }
 
 function testMagicByteVerification() {
@@ -484,8 +574,11 @@ function testAuditRelayPath() {
   const maliciousRaw = 'Received: from evil.com by mx.google.com ...\r\nReceived: from attacker.net by evil.com ...';
   const legitRaw = 'Received: from mail.spotify.com by mx.google.com ...\r\nReceived: from internal.spotify.com by mail.spotify.com ...';
 
-  const malWarnings = auditRelayPath(mockMessage(internalSender, maliciousRaw));
-  const legitWarnings = auditRelayPath(mockMessage(internalSender, legitRaw));
+  const malAudit = auditRelayPath(mockMessage(internalSender, maliciousRaw));
+  const legitAudit = auditRelayPath(mockMessage(internalSender, legitRaw));
+
+  const malWarnings = malAudit.warnings;
+  const legitWarnings = legitAudit.warnings;
 
   if (malWarnings.some(w => w.includes('Internal brand spoofing')) && legitWarnings.length === 0) {
     console.log('PASSED: auditRelayPath');

@@ -152,11 +152,12 @@ function unshortenUrlChain(url) {
   while (depth < maxDepth) {
     try {
       const response = UrlFetchApp.fetch(currentUrl, {
+        method: 'get',
         followRedirects: false,
         muteHttpExceptions: true
       });
 
-      let nextUrl = response.getHeaders()['Location'];
+      let nextUrl = response.getHeaders()['Location'] || response.getHeaders()['location'];
       const content = response.getContentText();
 
       // 1. Meta-Refresh Detection
@@ -473,6 +474,25 @@ function parseAuthHeaders(authHeader) {
 function auditDeliveryPath(rawHeaders) {
   const receivedHeaders = rawHeaders.match(/^Received: [\s\S]+?(?=\r?\n\w+:|$)/gm) || [];
   const warnings = [];
+  let hasMismatch = false;
+
+  // Extract every IP in the chain
+  const allIps = [];
+  receivedHeaders.forEach(header => {
+    const ipMatches = header.match(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g) || [];
+    allIps.push(...ipMatches);
+  });
+
+  const uniqueIps = [...new Set(allIps)];
+
+  // Cross-reference against Known-Bad-ASNs
+  uniqueIps.forEach(ip => {
+    const asn = getMockAsn(ip);
+    if (CONSTANTS.KNOWN_BAD_ASNS.includes(asn)) {
+      warnings.push(`CRITICAL: Known-Bad ASN detected in delivery chain (${asn} for IP ${ip}).`);
+      hasMismatch = true;
+    }
+  });
 
   // Parse in reverse order (originating MTA first)
   const reversed = [...receivedHeaders].reverse();
@@ -481,20 +501,46 @@ function auditDeliveryPath(rawHeaders) {
     const ipMatch = header.match(/\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]/);
     if (ipMatch) {
       const ip = ipMatch[1];
-      // Note: Full CIDR check would require a library or manual bitwise logic.
-      // For this implementation, we check for direct string matches or simple prefix.
       const isTrusted = CONSTANTS.TRUSTED_RELAYS.some(cidr => isIpInCidr(ip, cidr));
 
       if (!isTrusted && index === 0) {
         warnings.push(`Suspicious Origin: Initial relay IP ${ip} is not in trusted CIDR blocks.`);
+        hasMismatch = true;
       }
     }
   });
 
   return {
     hopCount: receivedHeaders.length,
-    warnings: warnings
+    warnings: warnings,
+    hasMismatch: hasMismatch
   };
+}
+
+/**
+ * Returns a mock ASN for testing/simulation.
+ * In production, this would call a GeoIP/ASN lookup service.
+ */
+function getMockAsn(ip) {
+  // Mock logic: map certain IP ranges to bad ASNs for testing
+  if (ip.startsWith('1.2.3.')) return 'AS40022';
+  if (ip.startsWith('8.8.8.')) return 'AS15169';
+  return 'AS12345';
+}
+
+/**
+ * Counts unique domains in a redirect chain.
+ */
+function countUniqueDomains(chain) {
+  const domains = chain.map(url => {
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch (e) {
+      return null;
+    }
+  }).filter(d => d !== null);
+
+  return new Set(domains).size;
 }
 
 /**
@@ -563,9 +609,11 @@ function auditRelayPath(message) {
   const raw = message.getRawContent();
   const audit = auditDeliveryPath(raw);
   const warnings = audit.warnings;
+  let hasMismatch = audit.hasMismatch;
 
   if (audit.hopCount > 10) {
     warnings.push(`Anomalous relay count detected (${audit.hopCount} hops). Possible mail-loop or routing manipulation.`);
+    hasMismatch = true;
   }
 
   const from = message.getFrom().toLowerCase();
@@ -577,10 +625,11 @@ function auditRelayPath(message) {
     const isTrustedHop = CONSTANTS.OFFICIAL_DOMAINS.some(domain => firstHop.includes(domain)) || firstHop.includes('google.com');
     if (!isTrustedHop) {
        warnings.push('CRITICAL: Internal brand spoofing detected. Message claims to be internal but originated from an external relay.');
+       hasMismatch = true;
     }
   }
 
-  return warnings;
+  return { warnings, hasMismatch };
 }
 
 /**

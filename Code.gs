@@ -1,6 +1,14 @@
 /**
  * Main entry point for the Gmail Add-on.
- * Version: 1.1.0 - Enhanced Security Features
+ * Version: 1.2.0 - Sentinel Phase
+ *
+ * Philosophy: Defense-in-Depth
+ * This scanner implements multiple layers of security:
+ * 1. Passive Header Analysis (SPF/DKIM/DMARC/Relay Chain)
+ * 2. Active Link Inspection (Redirect tracking/Shadow-link detection)
+ * 3. Content Heuristics (Linguistic drift/Sentiment analysis)
+ * 4. Attachment Sandboxing (Magic bytes/Structural analysis/OCR)
+ * 5. State Persistence (Caching) to maintain performance across large threads.
  */
 
 /**
@@ -25,14 +33,20 @@ function runSecurityScan(message, isDeepScan) {
   const messageId = message.getId();
   const threadId = message.getThread().getId();
   const properties = PropertiesService.getUserProperties();
+  const cache = CacheService.getUserCache();
   const checkpointKey = `checkpoint_${threadId}`;
+  const cacheKey = `scan_results_${messageId}`;
 
-  // State Management: Check if this message was already scanned in this session
+  // State Management: Check if this message was already scanned
+  const cachedScanData = cache.get(cacheKey);
+  if (cachedScanData) {
+    console.log(`Cache Hit: Returning cached results for message ${messageId}.`);
+    return JSON.parse(cachedScanData);
+  }
+
   const lastScanned = properties.getProperty(checkpointKey);
   if (lastScanned === messageId) {
     console.log(`Resuming/Skipping: Message ${messageId} already scanned.`);
-    // In a full implementation, we'd return cached scanData from CacheService here.
-    // For now, we skip and return a basic "Already Scanned" object to save quotas.
     return {
       messageId: messageId,
       warnings: ["Message previously scanned. Resuming..."],
@@ -83,19 +97,27 @@ function runSecurityScan(message, isDeepScan) {
 
   const warnings = [];
   let urlsToScan = originalUrls;
-  if (isDeepScan) {
-    urlsToScan = [];
-    originalUrls.forEach(url => {
-      const chain = unshortenUrlChain(url);
+
+  // Task 1: Shadow-Link Validator (Header-Only redirect chain audit)
+  originalUrls.forEach(url => {
+    const chain = unshortenUrlChain(url);
+    const uniqueDomains = countUniqueDomains(chain);
+    if (uniqueDomains > CONSTANTS.SHADOW_LINK_THRESHOLD) {
+      warnings.push(`Shadow-Link Detected: URL ${url} passes through ${uniqueDomains} domains. Possible cloaked redirect.`);
+    }
+
+    if (isDeepScan) {
       chain.forEach(u => {
         if (callDeepfakeDetectionApi(u)) {
           warnings.push(`Synthetic Media Alert: URL ${u} points to media requiring deepfake review.`);
         }
+        if (!urlsToScan.includes(u)) {
+          urlsToScan.push(u);
+        }
       });
-      urlsToScan.push(...chain);
-    });
-    urlsToScan = [...new Set(urlsToScan)];
-  }
+    }
+  });
+  urlsToScan = [...new Set(urlsToScan)];
   const maliciousQrUrls = [];
 
   // Passive Link Mismatch Detection (Always run as it is a string operation)
@@ -176,9 +198,9 @@ function runSecurityScan(message, isDeepScan) {
     warnings.push(...alignmentAudit.details);
   }
 
-  // Relay Auditing
-  const relayWarnings = auditRelayPath(message);
-  warnings.push(...relayWarnings);
+  // Relay Auditing (Task 2)
+  const relayAudit = auditRelayPath(message);
+  warnings.push(...relayAudit.warnings);
 
   // Mail-Bombing Detection (Roadmap 2.4)
   const threadRate = incrementMessageRate();
@@ -201,7 +223,7 @@ function runSecurityScan(message, isDeepScan) {
 
   const hasMalware = warnings.some(w => w.includes('malicious') || w.includes('Suspicious PDF'));
 
-  return {
+  const scanResults = {
     messageId: messageId,
     urls: urlsToScan,
     auth: authStatus,
@@ -214,8 +236,18 @@ function runSecurityScan(message, isDeepScan) {
     maliciousQrUrls: maliciousQrUrls,
     hasMalware: hasMalware,
     isSpotifyImpersonation: isSpotifyImpersonation,
-    alignmentPenalty: alignmentAudit.penaltyWeight + driftResults.penalty
+    alignmentPenalty: alignmentAudit.penaltyWeight + driftResults.penalty,
+    relayMismatch: relayAudit.hasMismatch
   };
+
+  // Task 3: Memory-Efficient Scaling (Cache final results)
+  try {
+    cache.put(cacheKey, JSON.stringify(scanResults), 21600); // Cache for 6 hours
+  } catch (e) {
+    console.warn('Failed to cache scan results: ' + e);
+  }
+
+  return scanResults;
 }
 
 /**
