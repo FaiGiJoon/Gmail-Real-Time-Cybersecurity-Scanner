@@ -87,6 +87,11 @@ const CONSTANTS = {
   VIP_IMPERSONATION_PENALTY: 30,
   VIP_TYPOSQUAT_PENALTY: 20,
 
+  // Sentinel Phase Configuration
+  KNOWN_BAD_ASNS: ['AS13335', 'AS15169', 'AS40022'],
+  SHADOW_LINK_THRESHOLD: 3,
+  RECEIVED_CHAIN_PENALTY: 40,
+
   // Non-Linear Multiplier Thresholds
   SCORING_MULTIPLIERS: {
     'CRITICAL_COMBO': 1.5, // e.g., DMARC Fail + Malicious URL

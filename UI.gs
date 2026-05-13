@@ -137,6 +137,11 @@ function calculateSecurityScore(data) {
     points -= CONSTANTS.RELAY_AUDIT_PENALTY;
   }
 
+  // Sentinel Phase: Received Chain Anomaly Deduction (-40)
+  if (data.relayMismatch) {
+    points -= CONSTANTS.RECEIVED_CHAIN_PENALTY;
+  }
+
   // Hidden Link Deduction (-25)
   if (warnings.some(w => w.includes('Hidden link detected'))) {
     points -= CONSTANTS.HIDDEN_LINK_PENALTY;
