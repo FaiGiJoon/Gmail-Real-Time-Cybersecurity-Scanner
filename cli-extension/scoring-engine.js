@@ -1,4 +1,4 @@
-import * as levenshtein from 'levenshtein-edit-distance';
+import { levenshteinEditDistance } from 'levenshtein-edit-distance';
 
 export const CONSTANTS = {
   TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook', 'spotify'],
@@ -170,8 +170,7 @@ export function isTyposquatted(url) {
 
     for (const brand of CONSTANTS.TYPOSQUAT_BRANDS) {
       if (mainDomain === brand) continue;
-      const distFunc = typeof levenshtein === 'function' ? levenshtein : levenshtein.default || (() => 10);
-      const distance = distFunc(mainDomain, brand);
+      const distance = levenshteinEditDistance(mainDomain, brand);
       if (distance > 0 && distance <= 2) return brand;
     }
   } catch (e) {}

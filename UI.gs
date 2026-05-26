@@ -9,6 +9,10 @@
  * @return {GoogleAppsScript.Card_Service.Card}
  */
 function createSecurityCard(data) {
+  // Defensive guards for missing data properties
+  data.auth = data.auth || { dmarc: 'unknown', spf: 'unknown', dkim: 'unknown' };
+  data.urls = data.urls || [];
+
   const score = calculateSecurityScore(data);
   const cardHeader = CardService.newCardHeader()
     .setTitle('Security Scan Result')
@@ -108,6 +112,10 @@ function createSecurityCard(data) {
 function calculateSecurityScore(data) {
   let points = 100;
   const warnings = data.warnings || [];
+
+  // Defensive guards for missing data properties
+  data.auth = data.auth || { dmarc: 'unknown', spf: 'unknown', dkim: 'unknown' };
+  data.urls = data.urls || [];
 
   // DMARC Failure (-40)
   if (data.auth.dmarc === 'fail') points -= 40;

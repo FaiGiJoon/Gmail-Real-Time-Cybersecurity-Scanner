@@ -81,11 +81,7 @@ function isLinkTextMismatch(text, url) {
 function isHomograph(url) {
   try {
     const domain = new URL(url).hostname.toLowerCase();
-    // Homograph Protection: Ensure the isHomograph function is triggered for any URL containing "spotify" to catch Punycode variants.
-    if (domain.startsWith('xn--') || domain.includes('spotify')) {
-      return domain.startsWith('xn--');
-    }
-    return false;
+    return domain.startsWith('xn--');
   } catch (e) {
     return false;
   }
@@ -231,9 +227,10 @@ function isTyposquatted(url) {
     const parts = domain.split('.');
     if (parts.length < 2) return null;
 
-    // Handle some common multi-part TLDs like .co.uk
+    // Handle some common multi-part TLDs like .co.uk, .ac.id, .gov.sg
     let mainDomain = parts[parts.length - 2];
-    if (['co', 'com', 'org', 'net', 'edu', 'gov'].includes(mainDomain) && parts.length > 2) {
+    const slds = ['co', 'ac', 'gov', 'com', 'org', 'net', 'edu'];
+    if (slds.includes(mainDomain) && parts.length > 2) {
       mainDomain = parts[parts.length - 3];
     }
 
