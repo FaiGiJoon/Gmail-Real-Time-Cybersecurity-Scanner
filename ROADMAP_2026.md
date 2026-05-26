@@ -22,9 +22,9 @@ As we approach 2026, the email threat landscape is characterized by hyper-person
 
 ## 3. Phase 2: Deception & Counter-Intel (Mid Term)
 
-### 3.1 The "Breadcrumb" Injector
-**Threat Negated:** **Credential Harvesting**—Once a phishing page is confirmed, the scanner fights back.
-- **Implementation:** Automatically injects "fake" but realistic-looking credentials into identified phishing pages via the scanner's headless agent to track data exfiltration paths and exhaust attacker resources.
+### 3.1 Passive Threat Telemetry
+**Threat Negated:** **Credential Harvesting**—Monitor exfiltration without active interference.
+- **Implementation:** Focuses on tracking exfiltration via sandboxed analytics and coordination with legal takedown providers (APWG) to dismantle phishing infrastructure.
 
 ### 3.2 Linguistic Fingerprinting (N-gram Analysis)
 **Threat Negated:** **Synthetic Brand Impersonation**—LLM-generated emails that "look" right but "feel" wrong.
@@ -52,6 +52,6 @@ As we approach 2026, the email threat landscape is characterized by hyper-person
 
 ## 5. Implementation Timeline
 *   **Q1 2026:** Deployment of Active Header Trace-Route and expanded ASN auditing.
-*   **Q2 2026:** Rollout of "Breadcrumb" Injector and N-gram Linguistic Fingerprinting.
+*   **Q2 2026:** Rollout of Passive Threat Telemetry and N-gram Linguistic Fingerprinting.
 *   **Q3 2026:** Integration with local hardware APIs (MikroTik) and IoT notification ledgers.
 *   **Q4 2026:** Full "Sentinel Phase" ecosystem release.

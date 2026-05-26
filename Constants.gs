@@ -26,8 +26,11 @@ const CONSTANTS = {
   // Trusted Relays (Example CIDRs for 2026 Audit)
   TRUSTED_RELAYS: [
     '209.85.128.0/17', // Google
-    '66.102.0.0/20',   // Google
-    '104.47.0.0/17'    // Microsoft/Office 365
+    '74.125.0.0/16',  // Google
+    '104.47.0.0/17',   // Microsoft/Office 365
+    '40.92.0.0/15',    // Microsoft EOP
+    '40.107.0.0/16',   // Microsoft EOP
+    '52.100.0.0/14'    // Microsoft EOP
   ],
 
   THREAT_LEVELS: {
