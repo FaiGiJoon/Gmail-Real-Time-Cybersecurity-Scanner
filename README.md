@@ -1,4 +1,4 @@
-# 🛡️ Gmail Real-Time Cybersecurity Scanner
+# Gmail Real-Time Cybersecurity Scanner
 
 [![GCP](https://img.shields.io/badge/GCP-Cloud%20Vision-blue)](https://cloud.google.com/vision)
 [![Apps Script](https://img.shields.io/badge/Google-Apps%20Script-4285F4)](https://developers.google.com/apps-script)
@@ -9,7 +9,7 @@
 
 ---
 
-## 🚀 Analysis Pipeline
+## Analysis Pipeline
 
 ```mermaid
 graph TD
@@ -32,7 +32,7 @@ graph TD
 
 ---
 
-## ⚡ Fast-Track Deployment
+## Fast-Track Deployment
 
 1.  **Clone the Repository:**
     ```bash
@@ -53,7 +53,7 @@ graph TD
 
 ---
 
-## 🧠 Intelligence & Scoring Model
+## Intelligence & Scoring Model
 
 The scanner utilizes a non-linear composite scoring formula ($S$) to assess threat severity.
 
@@ -62,11 +62,18 @@ $$S = 100 - (\sum w_i \cdot I_i) \cdot M$$
 | Weight ($w_i$) | Indicator ($I_i$) | Threat Type |
 | :--- | :--- | :--- |
 | 80 | Malware / Suspicious PDF | **Critical** |
-| 60 | Malicious / Homograph URL | **High** |
-| 40 | DMARC Failure | **Critical Spoofing** |
+| 60 | Malicious / Homograph / Mismatch URL | **High** |
+| 40 | DMARC Authentication Failure | **Critical Spoofing** |
+| 40 | Received Chain Anomaly | **Infrastructure** |
+| 40 | Spotify Brand Impersonation | **Brand Spoofing** |
+| 35 | Sender Alignment Mismatch | **Spoofing** |
 | 35 | Relay Path Anomaly | **Brand Spoofing** |
+| 30 | VIP Name Impersonation | **Social Engineering** |
 | 25 | Malicious QR Link | **Quishing** |
-| 15-20 | Linguistic Pressure (BEC) | **Social Engineering** |
+| 25 | Hidden Link (CSS/Obfuscated) | **Evasion** |
+| 25 | Instructional Drift (AI Injection) | **AI Security** |
+| 20 | VIP Typosquatting Detection | **Social Engineering** |
+| 5-20 | Linguistic Pressure (BEC Keywords) | **Social Engineering** |
 
 **Non-Linear Multipliers ($M$):**
 - **Critical Combo (1.5x):** Triggered when a DMARC failure coincides with a malicious URL.
@@ -74,7 +81,7 @@ $$S = 100 - (\sum w_i \cdot I_i) \cdot M$$
 
 ---
 
-## 🛡️ Advanced Defensive Modules
+## Advanced Defensive Modules
 
 -   **Key-Hunter (Autonomous Decryption):** Identifies passwords in email bodies to decrypt ZIP attachments for deep inspection.
 -   **Shield-Layer (Prompt Injection Firewall):** Neutralizes LLM "jailbreak" attempts within emails before analysis.
@@ -84,26 +91,26 @@ $$S = 100 - (\sum w_i \cdot I_i) \cdot M$$
 
 ---
 
-## ⚠️ Critical Limits & Operations
+## Critical Limits & Operations
 
 -   **Execution Timeout:** The scanner handles large threads by implementing a sliding-window rate analyzer and state persistence via `CacheService`.
 -   **Privacy-by-Design:** All data processing occurs *In-Situ* within your Google Cloud tenant. No email content or PII is ever transmitted to external 3rd-party servers (excluding reputation API lookups).
 
 ---
 
-## 🛠️ Gemini CLI Extension (MCP)
+## Gemini CLI Extension (MCP)
 
 For security analysts, the included Node.js MCP server provides a terminal-based bridge for advanced threat hunting.
 
 ```bash
 # Start the MCP server
 npm install
-npm run start:mcp
+npm start
 ```
 
 ---
 
-## 🤝 Contribution & Debugging
+## Contribution & Debugging
 
 -   **Security Disclosure:** Please report any logic bypasses via the [Security Policy](SECURITY.md).
 -   **Logs:** Access real-time analysis logs via the Apps Script dashboard or Google Cloud Logging (Stackdriver).
