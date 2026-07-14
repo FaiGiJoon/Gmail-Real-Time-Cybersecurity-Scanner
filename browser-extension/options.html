@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gmail Cybersecurity Scanner Settings</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #1557b0;
+    }
+    .status {
+      margin-top: 10px;
+      color: green;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h2>Extension Security Settings</h2>
+  <p>To secure your API keys and prevent key theft, we recommend entering custom keys here if you do not have a backend proxy configured.</p>
+
+  <div class="form-group">
+    <label for="safe-browsing-key">Safe Browsing API Key:</label>
+    <input type="text" id="safe-browsing-key" placeholder="Enter key...">
+  </div>
+
+  <div class="form-group">
+    <label for="cloud-vision-key">Cloud Vision API Key:</label>
+    <input type="text" id="cloud-vision-key" placeholder="Enter key...">
+  </div>
+
+  <div class="form-group">
+    <label for="virustotal-key">VirusTotal API Key:</label>
+    <input type="text" id="virustotal-key" placeholder="Enter key...">
+  </div>
+
+  <button id="save-btn">Save Settings</button>
+  <div id="status" class="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
