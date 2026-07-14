@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gmail Cybersecurity Scanner</title>
+  <style>
+    body {
+      width: 320px;
+      font-family: Arial, sans-serif;
+      margin: 10px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
+    .header img {
+      width: 24px;
+      margin-right: 8px;
+    }
+    .score-container {
+      text-align: center;
+      margin: 15px 0;
+    }
+    .score {
+      font-size: 36px;
+      font-weight: bold;
+    }
+    .warning-list {
+      color: #d93025;
+      font-size: 13px;
+      padding-left: 20px;
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 15px;
+    }
+    button {
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-neutralize {
+      background-color: #d93025;
+      color: white;
+    }
+    .btn-neutralize:hover {
+      background-color: #b0251a;
+    }
+    .btn-deep-scan {
+      background-color: #1a73e8;
+      color: white;
+    }
+    .btn-deep-scan:hover {
+      background-color: #1557b0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="Scanner Logo">
+    <h3>Gmail Security Audit</h3>
+  </div>
+
+  <div class="score-container">
+    <div>Security Score</div>
+    <div id="security-score" class="score">--</div>
+    <div id="status-text">Scanning...</div>
+  </div>
+
+  <div>
+    <strong>Warnings:</strong>
+    <ul id="warning-list" class="warning-list">
+      <li>No email opened or loaded yet.</li>
+    </ul>
+  </div>
+
+  <div class="actions">
+    <button id="btn-deep-scan" class="btn-deep-scan">Perform Deep Scan</button>
+    <button id="btn-neutralize" class="btn-neutralize">Neutralize Threat</button>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
