@@ -24,7 +24,9 @@ function runTests() {
   testAuditSenderAlignment();
   testLevenshteinDistanceOptimized();
   testMailBombingDetection();
+  testIncrementMessageRateWithEviction();
   testMagicByteVerification();
+  testPublicApiGateway();
   testUnshortenUrlChainEnhanced();
   testSanitizeForLlm();
   testAuditDeliveryPath();
@@ -159,10 +161,31 @@ function testUnshortenUrlChainEnhanced() {
   };
 
   const chain = unshortenUrlChain('http://short.com');
-  if (chain.includes('http://landing.com')) {
-    console.log('PASSED: Enhanced unshortenUrlChain (Meta-Refresh)');
+  let passed = chain.includes('http://landing.com');
+
+  // Test JS Location redirect
+  globalThis.UrlFetchApp.fetch = (url, options) => {
+    if (url === 'http://js-redirect.com') {
+      return {
+        getHeaders: () => ({}),
+        getContentText: () => 'window.location.replace("http://js-target.com")'
+      };
+    }
+    return { getHeaders: () => ({}), getContentText: () => '' };
+  };
+
+  const jsChain = unshortenUrlChain('http://js-redirect.com');
+  if (jsChain.includes('http://js-target.com')) {
+    console.log('PASSED: Enhanced unshortenUrlChain (JS Redirect)');
   } else {
-    console.error('FAILED: Enhanced unshortenUrlChain (Meta-Refresh). Chain: ' + JSON.stringify(chain));
+    console.error('FAILED: Enhanced unshortenUrlChain (JS Redirect). Chain: ' + JSON.stringify(jsChain));
+    passed = false;
+  }
+
+  if (passed) {
+    console.log('PASSED: Enhanced unshortenUrlChain (Meta-Refresh & JS Redirect)');
+  } else {
+    console.error('FAILED: Enhanced unshortenUrlChain checks');
   }
 
   globalThis.UrlFetchApp.fetch = originalFetch;
@@ -716,16 +739,25 @@ function testLevenshteinDistanceOptimized() {
 function testExpandedMagicBytes() {
   console.log('Testing Expanded Magic Bytes...');
 
-  const mockPng = { getBytes: () => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] };
-  const mockJpeg = { getBytes: () => [0xFF, 0xD8, 0xFF, 0x00] };
-  const mock7z = { getBytes: () => [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C] };
+  const mockPng = { getBytes: () => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], getName: () => 'image.png' };
+  const mockJpeg = { getBytes: () => [0xFF, 0xD8, 0xFF, 0x00], getName: () => 'photo.jpg' };
+  const mock7z = { getBytes: () => [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C], getName: () => 'archive.7z' };
+
+  const mockDocx = { getBytes: () => [0x50, 0x4B, 0x03, 0x04], getName: () => 'document.docx' };
+  const mockXlsx = { getBytes: () => [0x50, 0x4B, 0x03, 0x04], getName: () => 'spreadsheet.xlsx' };
+  const mockLnk = { getBytes: () => [0x4C, 0x00, 0x00, 0x00], getName: () => 'shortcut.lnk' };
+  const mockRtf = { getBytes: () => [0x7B, 0x5C, 0x72, 0x74], getName: () => 'text.rtf' };
 
   if (verifyMagicBytes(mockPng) === 'PNG' &&
       verifyMagicBytes(mockJpeg) === 'JPEG' &&
-      verifyMagicBytes(mock7z) === '7Z') {
+      verifyMagicBytes(mock7z) === '7Z' &&
+      verifyMagicBytes(mockDocx) === 'DOCX' &&
+      verifyMagicBytes(mockXlsx) === 'XLSX' &&
+      verifyMagicBytes(mockLnk) === 'LNK' &&
+      verifyMagicBytes(mockRtf) === 'RTF') {
     console.log('PASSED: Expanded Magic Bytes');
   } else {
-    console.error('FAILED: Expanded Magic Bytes');
+    console.error('FAILED: Expanded Magic Bytes. Docx=' + verifyMagicBytes(mockDocx) + ', Xlsx=' + verifyMagicBytes(mockXlsx) + ', Lnk=' + verifyMagicBytes(mockLnk) + ', Rtf=' + verifyMagicBytes(mockRtf));
   }
 }
 
@@ -766,5 +798,105 @@ function testCheckKeywordPhishing() {
     console.log('PASSED: checkKeywordPhishing');
   } else {
     console.error(`FAILED: checkKeywordPhishing. Warnings: ${JSON.stringify(warnings)}`);
+  }
+}
+
+function testIncrementMessageRateWithEviction() {
+  console.log('Testing incrementMessageRate with eviction...');
+
+  const mockCache = {
+    store: {},
+    get: function(key) { return this.store[key] || null; },
+    put: function(key, val, sec) { this.store[key] = val; },
+    remove: function(key) { delete this.store[key]; }
+  };
+
+  const mockProperties = {
+    store: {},
+    getProperty: function(key) { return this.store[key] || null; },
+    setProperty: function(key, val) { this.store[key] = val.toString(); }
+  };
+
+  const originalCacheService = globalThis.CacheService;
+  const originalPropertiesService = globalThis.PropertiesService;
+
+  globalThis.CacheService = { getUserCache: () => mockCache };
+  globalThis.PropertiesService = { getUserProperties: () => mockProperties };
+
+  // Set initial state with an old key to prune
+  mockProperties.setProperty('active_rate_keys', 'msg_rate_100,msg_rate_200000000');
+  mockCache.put('msg_rate_100', '5');
+
+  const count = incrementMessageRate();
+
+  if (count === 1) {
+    console.log('PASSED: incrementMessageRate basic increment');
+  } else {
+    console.error('FAILED: incrementMessageRate basic increment. Count: ' + count);
+  }
+
+  // Check if old key 'msg_rate_100' was pruned from cache and properties
+  const remainingKeys = mockProperties.getProperty('active_rate_keys');
+  let testPassed = true;
+
+  if (!remainingKeys.includes('msg_rate_100')) {
+    console.log('PASSED: incrementMessageRate evicted old key from registry');
+  } else {
+    console.error('FAILED: incrementMessageRate did not evict old key from registry. Keys: ' + remainingKeys);
+    testPassed = false;
+  }
+
+  if (mockCache.get('msg_rate_100') === null) {
+    console.log('PASSED: incrementMessageRate removed evicted key from cache');
+  } else {
+    console.error('FAILED: incrementMessageRate did not remove evicted key from cache');
+    testPassed = false;
+  }
+
+  // Assert that active/future keys are preserved (e.g. msg_rate_200000000 and the current bucket key)
+  const currentBucketNow = Math.floor(Date.now() / 600000);
+  const currentKey = `msg_rate_${currentBucketNow}`;
+
+  if (remainingKeys.includes('msg_rate_200000000')) {
+    console.log('PASSED: incrementMessageRate preserved future/active key in registry');
+  } else {
+    console.error('FAILED: incrementMessageRate did not preserve active key in registry. Keys: ' + remainingKeys);
+    testPassed = false;
+  }
+
+  if (remainingKeys.includes(currentKey)) {
+    console.log('PASSED: incrementMessageRate registered current key in registry');
+  } else {
+    console.error('FAILED: incrementMessageRate did not register current key in registry. Keys: ' + remainingKeys);
+    testPassed = false;
+  }
+
+  if (testPassed) {
+    console.log('PASSED: incrementMessageRate with eviction test completed successfully');
+  } else {
+    console.error('FAILED: incrementMessageRate with eviction test failed some assertions');
+  }
+
+  globalThis.CacheService = originalCacheService;
+  globalThis.PropertiesService = originalPropertiesService;
+}
+
+function testPublicApiGateway() {
+  console.log('Testing Public API Gateway (index.gs)...');
+
+  if (typeof GmailScanner !== 'undefined') {
+    console.log('PASSED: GmailScanner object exists globally');
+  } else {
+    console.error('FAILED: GmailScanner object is undefined');
+    return;
+  }
+
+  if (typeof GmailScanner.runSecurityScan === 'function' &&
+      typeof GmailScanner.calculateSecurityScore === 'function' &&
+      typeof GmailScanner.createSecurityCard === 'function' &&
+      typeof GmailScanner.getContextualAddOn === 'function') {
+    console.log('PASSED: GmailScanner exposes correct public API functions');
+  } else {
+    console.error('FAILED: GmailScanner does not expose correct public API functions');
   }
 }

@@ -27,12 +27,16 @@ function createSecurityCard(data) {
     .setBottomLabel(`Score: ${score.points}/100`)
     .setStartIcon(CardService.newIconImage().setIconUrl(scoreIcon)));
 
-  // Warnings / Security Details
+  // Warnings / Security Details - Displays Top 3 Warnings Prominently
   if (data.warnings && data.warnings.length > 0) {
-    const warningText = data.warnings.map(w => `• ${w}`).join('\n');
+    const topWarnings = data.warnings.slice(0, 3);
+    let warningText = topWarnings.map(w => `⚠️ ${w}`).join('\n\n');
+    if (data.warnings.length > 3) {
+      warningText += `\n\n💬 (+ ${data.warnings.length - 3} more warnings detected. Run Deep Scan or check below.)`;
+    }
     section.addWidget(CardService.newTextParagraph().setText(warningText));
   } else {
-    section.addWidget(CardService.newTextParagraph().setText('No immediate threats detected.'));
+    section.addWidget(CardService.newTextParagraph().setText('✅ No immediate threats detected. Your message is secure.'));
   }
 
   // Mitigation Tools

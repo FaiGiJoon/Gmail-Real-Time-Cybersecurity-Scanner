@@ -39,6 +39,7 @@ export const CONSTANTS = {
   QR_THREAT_PENALTY: 25,
   RELAY_AUDIT_PENALTY: 35,
   HIDDEN_LINK_PENALTY: 25,
+  RECEIVED_CHAIN_PENALTY: 40,
   SENDER_ALIGNMENT_PENALTY: 35,
   VIP_IMPERSONATION_PENALTY: 30,
   VIP_TYPOSQUAT_PENALTY: 20,
@@ -232,6 +233,10 @@ export function calculateScore(data) {
 
   if (warnings.some(w => w.includes('Hidden link detected'))) {
     points -= CONSTANTS.HIDDEN_LINK_PENALTY;
+  }
+
+  if (data.relayMismatch) {
+    points -= CONSTANTS.RECEIVED_CHAIN_PENALTY;
   }
 
   const drift = analyzeLinguisticDrift(data.body);
