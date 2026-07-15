@@ -158,14 +158,30 @@ function unshortenUrlChain(url) {
 
       // 1. Meta-Refresh Detection
       if (!nextUrl) {
-        const metaMatch = content.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^"']*url=([^"']+)["']/i);
-        if (metaMatch) nextUrl = metaMatch[1];
+        const metaMatch = content.match(/<meta\s+[^>]*http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"']+)["']/i);
+        if (metaMatch) {
+          nextUrl = metaMatch[1];
+        } else {
+          const metaMatchAlt = content.match(/<meta\s+[^>]*content=["'][^"']*url=([^"']+)["'][^>]*http-equiv=["']refresh["']/i);
+          if (metaMatchAlt) nextUrl = metaMatchAlt[1];
+        }
       }
 
-      // 2. JavaScript window.location Detection
+      // 2. JavaScript window.location and Redirect Detection
       if (!nextUrl) {
-        const jsMatch = content.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i);
-        if (jsMatch) nextUrl = jsMatch[1];
+        const jsPatterns = [
+          /window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i,
+          /window\.location\.(?:replace|assign)\s*\(\s*["']([^"']+)["']\s*\)/i,
+          /(?:\b|[^.])location(?:\.href)?\s*=\s*["']([^"']+)["']/i,
+          /(?:\b|[^.])location\.(?:replace|assign)\s*\(\s*["']([^"']+)["']\s*\)/i
+        ];
+        for (const pattern of jsPatterns) {
+          const match = content.match(pattern);
+          if (match) {
+            nextUrl = match[1];
+            break;
+          }
+        }
       }
 
       if (nextUrl && nextUrl !== currentUrl && !chain.includes(nextUrl)) {
@@ -206,13 +222,27 @@ function unshortenUrlChain(url) {
  */
 function verifyMagicBytes(blob) {
   const bytes = blob.getBytes().slice(0, 8); // Read first 8 bytes
+  const name = (blob.getName ? blob.getName() : '') || '';
+  const ext = name.toLowerCase().split('.').pop();
 
+  let matchedType = null;
   for (const [type, signature] of Object.entries(CONSTANTS.MAGIC_BYTES)) {
     const isMatch = signature.every((byte, i) => (bytes[i] & 0xFF) === byte);
-    if (isMatch) return type;
+    if (isMatch) {
+      if (type === 'ZIP' || type === 'DOCX' || type === 'XLSX') {
+        if (ext === type.toLowerCase()) {
+          return type;
+        }
+        if (!matchedType) {
+          matchedType = type; // Keep the first matched type (ZIP) as fallback
+        }
+      } else {
+        return type;
+      }
+    }
   }
 
-  return null;
+  return matchedType;
 }
 
 /**
@@ -577,6 +607,8 @@ function callDeepfakeDetectionApi(url) {
 
 /**
  * Tracks message rates using CacheService (Persistent State Manager).
+ * Implements a 24-hour TTL (86400 seconds) and a key eviction strategy
+ * to prevent the cache from filling up in high-volume accounts.
  */
 function incrementMessageRate() {
   const cache = CacheService.getUserCache();
@@ -588,7 +620,41 @@ function incrementMessageRate() {
     lock.waitLock(5000);
     let count = parseInt(cache.get(key) || "0");
     count++;
-    cache.put(key, count.toString(), 1200); // Store for 20 mins
+    cache.put(key, count.toString(), 86400); // Store for 24 hours
+
+    // Eviction & Pruning Strategy: Track active keys and prune old ones
+    const properties = PropertiesService.getUserProperties();
+    let rateKeysStr = properties.getProperty('active_rate_keys') || '';
+    let rateKeys = rateKeysStr ? rateKeysStr.split(',') : [];
+
+    if (!rateKeys.includes(key)) {
+      rateKeys.push(key);
+    }
+
+    const oneDayAgo = now - 144; // 144 ten-minute intervals in 24 hours
+    const activeKeys = [];
+    const keysToPrune = [];
+
+    rateKeys.forEach(k => {
+      const match = k.match(/msg_rate_(\d+)/);
+      if (match) {
+        const timeId = parseInt(match[1]);
+        if (timeId >= oneDayAgo) {
+          activeKeys.push(k);
+        } else {
+          keysToPrune.push(k);
+        }
+      }
+    });
+
+    // Explicitly prune older keys from cache
+    keysToPrune.forEach(k => {
+      cache.remove(k);
+    });
+
+    // Save pruned active list back to properties
+    properties.setProperty('active_rate_keys', activeKeys.join(','));
+
     return count;
   } catch (e) {
     return 0;
@@ -705,7 +771,10 @@ function analyzeAttachments(attachments) {
 
     const verifiedType = verifyMagicBytes(attachment);
     if (verifiedType && verifiedType !== ext.toUpperCase()) {
-      if (!(verifiedType === 'ZIP' && ext === 'jar')) { // Allow jar as zip
+      const zipBasedTypes = ['ZIP', 'DOCX', 'XLSX'];
+      const isZipBasedMatch = zipBasedTypes.includes(verifiedType) && ['jar', 'docx', 'xlsx', 'zip'].includes(ext);
+
+      if (!isZipBasedMatch) {
         warnings.push(`File Signature Mismatch: ${filename} claims to be .${ext} but is actually a ${verifiedType} file.`);
       }
     }

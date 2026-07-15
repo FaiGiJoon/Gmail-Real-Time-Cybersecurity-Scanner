@@ -55,3 +55,25 @@ This report outlines the evolving threat landscape for email-based cybercrime in
 
 ## Privacy and Data Security
 The Gmail Real-Time Cybersecurity Scanner is designed with a privacy-first approach. All analysis is performed within the user's secure Google Apps Script environment. Deep scans and external API calls are only initiated upon specific triggers or user requests, ensuring minimal data exposure while maintaining maximum protection.
+
+## Appendix: Forensic Attachment Analysis & Magic Bytes
+
+To counter late-stage extension evasion and "Double Extension" attacks (e.g., `invoice.pdf.exe`), the scanner implements a **Defense-in-Depth** magic-bytes verification layer. By reading the first few bytes (the "file signature") of attachments, the engine detects and alerts on spoofed extensions.
+
+### Supported File Signatures
+
+| Format | Extension | Magic Bytes (Hex Signature) | Risk Weight / Penalty | Threat Level / Classification |
+|---|---|---|---|---|
+| **PDF** | `.pdf` | `25 50 44 46` (`%PDF`) | High (Structure Scan) | Document Payload Audit |
+| **ZIP** | `.zip` | `50 4B 03 04` (`PK..`) | Medium | Container Bypass Check |
+| **DOCX** | `.docx` | `50 4B 03 04` (`PK..`) | Medium | Office Open XML Audit |
+| **XLSX** | `.xlsx` | `50 4B 03 04` (`PK..`) | Medium | Office Open XML Audit |
+| **EXE** | `.exe` | `4D 5A` (`MZ`) | Critical (Binary) | Malicious Binary Block |
+| **PNG** | `.png` | `89 50 4E 47 0D 0A 1A 0A` | Low | Embedded OCR Analysis |
+| **JPEG** | `.jpg`, `.jpeg` | `FF D8 FF` | Low | Embedded OCR Analysis |
+| **GIF** | `.gif` | `47 49 46 38` (`GIF8`) | Low | Image Payload Verification |
+| **7Z** | `.7z` | `37 7A BC AF 27 1C` | Medium | Container Bypass Check |
+| **LNK** | `.lnk` | `4C 00 00 00` | High | Shortcut Spoofing Detection |
+| **RTF** | `.rtf` | `7B 5C 72 74` (`{\rt`) | High | Rich Text Exploit Scanning |
+
+*Note: Zip-based files (ZIP, DOCX, XLSX) are inspected dynamically by aligning the file signature matching with the declared filename extension to eliminate false positive mismatch reports.*

@@ -123,14 +123,25 @@ const context = {
 context.globalThis = context;
 
 function loadFile(path) {
+  if (!fs.existsSync(path)) {
+    console.warn(`Warning: Expected file ${path} does not exist, skipping.`);
+    return;
+  }
   const code = fs.readFileSync(path, 'utf8');
   vm.runInNewContext(code, context, path);
 }
 
-loadFile('Constants.gs');
-loadFile('SecurityEngine.gs');
-loadFile('UI.gs');
-loadFile('Code.gs');
+// Dynamically discover and load all .gs files in correct execution sequence
+const gsFilesInDir = fs.readdirSync('.').filter(f => f.endsWith('.gs') && f !== 'tests.js');
+const orderedSeed = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs'];
+const extraGsFiles = gsFilesInDir.filter(f => !orderedSeed.includes(f));
+const gsFilesToLoad = [...orderedSeed, ...extraGsFiles];
+
+gsFilesToLoad.forEach(file => {
+  loadFile(file);
+});
+
+// Load the unit test suite last
 loadFile('tests.js');
 
 context.runTests();
