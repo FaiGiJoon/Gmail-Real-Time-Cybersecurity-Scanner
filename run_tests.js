@@ -1,5 +1,6 @@
 const fs = require('fs');
 const vm = require('vm');
+const pathModule = require('path');
 
 // Mock Google Apps Script Globals
 const mockCardService = {
@@ -123,12 +124,29 @@ const context = {
 context.globalThis = context;
 
 function loadFile(path) {
-  if (!fs.existsSync(path)) {
-    console.warn(`Warning: Expected file ${path} does not exist, skipping.`);
+  const safePath = pathModule.resolve(__dirname, path);
+  const projectRoot = pathModule.resolve(__dirname);
+
+  // Ensure the resolved path is strictly within the project directory to prevent directory traversal
+  if (!safePath.startsWith(projectRoot)) {
+    console.warn(`Warning: Expected file ${path} is out of bounds, skipping.`);
     return;
   }
-  const code = fs.readFileSync(path, 'utf8');
-  vm.runInNewContext(code, context, path);
+
+  // Ensure the file strictly has a .gs extension or is tests.js to prevent loading arbitrary files
+  const filename = pathModule.basename(safePath);
+  if (!filename.endsWith('.gs') && filename !== 'tests.js') {
+    console.warn(`Warning: Expected file ${path} has disallowed extension, skipping.`);
+    return;
+  }
+
+  if (!fs.existsSync(safePath)) {
+    console.warn(`Warning: Expected file ${safePath} does not exist, skipping.`);
+    return;
+  }
+
+  const code = fs.readFileSync(safePath, 'utf8');
+  vm.runInNewContext(code, context, safePath);
 }
 
 // Dynamically discover and load all .gs files in correct execution sequence
