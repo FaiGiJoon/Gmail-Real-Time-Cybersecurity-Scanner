@@ -124,28 +124,19 @@ const context = {
 context.globalThis = context;
 
 function loadFile(path) {
-  // 1. Regex validation to ensure safe structure (allows relative paths/subdirectories, strictly ending in .gs or .js, no directory traversal)
-  const safePattern = /^(?:\.\/)?(?:[a-zA-Z0-9_\-]+\/)*[a-zA-Z0-9_\-]+\.(gs|js)$/;
-  if (!safePattern.test(path)) {
-    console.warn(`Warning: Expected file ${path} is not allowed (failed safety pattern check), skipping.`);
+  // Dynamically retrieve the list of safe files from the directory to satisfy CodeQL's taint analysis
+  const allowedFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.gs') || f === 'tests.js');
+  const baseName = pathModule.basename(path);
+  const safePath = allowedFiles.find(f => f === baseName);
+
+  if (!safePath) {
+    console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
     return;
   }
 
-  // 2. Resolve to absolute path and check boundary to guarantee it resides strictly in the project directory
-  const safePath = pathModule.resolve(__dirname, path);
-  const projectRoot = pathModule.resolve(__dirname);
-  if (!safePath.startsWith(projectRoot)) {
-    console.warn(`Warning: Expected file ${path} resides outside project directory, skipping.`);
-    return;
-  }
-
-  if (!fs.existsSync(safePath)) {
-    console.warn(`Warning: Expected file ${safePath} does not exist, skipping.`);
-    return;
-  }
-
-  const code = fs.readFileSync(safePath, 'utf8');
-  vm.runInNewContext(code, context, safePath);
+  const resolvedPath = pathModule.join(__dirname, safePath);
+  const code = fs.readFileSync(resolvedPath, 'utf8');
+  vm.runInNewContext(code, context, resolvedPath);
 }
 
 // Dynamically discover and load all .gs files in correct execution sequence
