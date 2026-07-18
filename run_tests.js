@@ -124,19 +124,18 @@ const context = {
 context.globalThis = context;
 
 function loadFile(path) {
-  const safePath = pathModule.resolve(__dirname, path);
-  const projectRoot = pathModule.resolve(__dirname);
-
-  // Ensure the resolved path is strictly within the project directory to prevent directory traversal
-  if (!safePath.startsWith(projectRoot)) {
-    console.warn(`Warning: Expected file ${path} is out of bounds, skipping.`);
+  // 1. Regex validation to ensure safe structure (allows relative paths/subdirectories, strictly ending in .gs or .js, no directory traversal)
+  const safePattern = /^(?:\.\/)?(?:[a-zA-Z0-9_\-]+\/)*[a-zA-Z0-9_\-]+\.(gs|js)$/;
+  if (!safePattern.test(path)) {
+    console.warn(`Warning: Expected file ${path} is not allowed (failed safety pattern check), skipping.`);
     return;
   }
 
-  // Ensure the file strictly has a .gs extension or is tests.js to prevent loading arbitrary files
-  const filename = pathModule.basename(safePath);
-  if (!filename.endsWith('.gs') && filename !== 'tests.js') {
-    console.warn(`Warning: Expected file ${path} has disallowed extension, skipping.`);
+  // 2. Resolve to absolute path and check boundary to guarantee it resides strictly in the project directory
+  const safePath = pathModule.resolve(__dirname, path);
+  const projectRoot = pathModule.resolve(__dirname);
+  if (!safePath.startsWith(projectRoot)) {
+    console.warn(`Warning: Expected file ${path} resides outside project directory, skipping.`);
     return;
   }
 
