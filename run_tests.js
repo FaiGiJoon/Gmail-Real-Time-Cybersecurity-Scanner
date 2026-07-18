@@ -124,17 +124,22 @@ const context = {
 context.globalThis = context;
 
 function loadFile(path) {
-  // Dynamically retrieve the list of safe files from the directory to satisfy CodeQL's taint analysis
-  const allowedFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.gs') || f === 'tests.js');
+  // Only execute known project script files.
+  const allowedFiles = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'tests.js'];
   const baseName = pathModule.basename(path);
-  const safePath = allowedFiles.find(f => f === baseName);
 
-  if (!safePath) {
+  if (!allowedFiles.includes(baseName)) {
     console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
     return;
   }
 
-  const resolvedPath = pathModule.join(__dirname, safePath);
+  const baseDir = pathModule.resolve(__dirname);
+  const resolvedPath = pathModule.resolve(baseDir, baseName);
+  if (!resolvedPath.startsWith(baseDir + pathModule.sep)) {
+    console.warn(`Warning: File path ${path} resolves outside allowed directory, skipping.`);
+    return;
+  }
+
   const code = fs.readFileSync(resolvedPath, 'utf8');
   vm.runInNewContext(code, context, resolvedPath);
 }
