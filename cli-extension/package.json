@@ -17,5 +17,8 @@
     "dotenv": "^16.4.5",
     "googleapis": "^144.0.0",
     "levenshtein-edit-distance": "^3.0.0"
+  },
+  "overrides": {
+    "hono": "^4.12.31"
   }
 }
