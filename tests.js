@@ -247,13 +247,14 @@ function testSanitizeContent() {
 
   const htmlBody = '<div>Hello</div><script>alert("xss")</script><style>.body{}</style><a href="http://evil.com">Click</a><img src="pixel.png">';
   const sanitize = (html) => {
-    let sanitized = html
-      .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-      .replace(/<style\b[\s\S]*?<\/style>/gi, '');
+    let sanitized = html;
     let prev;
     do {
       prev = sanitized;
-      sanitized = sanitized.replace(/<[^>]+>/g, ' ');
+      sanitized = sanitized
+        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ');
     } while (sanitized !== prev);
     return sanitized.replace(/\s+/g, ' ').trim();
   };
