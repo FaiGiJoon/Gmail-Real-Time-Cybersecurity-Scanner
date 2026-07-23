@@ -140,7 +140,30 @@ function loadFile(path) {
     return;
   }
 
-  const code = fs.readFileSync(resolvedPath, 'utf8');
+  // Security Hardening: Use strict switch-case with compile-time string literals for fs.readFileSync
+  // to completely break the taint path from input variables to the execution context of vm.runInNewContext (js/code-injection).
+  let code = '';
+  switch (baseName) {
+    case 'Constants.gs':
+      code = fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8');
+      break;
+    case 'SecurityEngine.gs':
+      code = fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8');
+      break;
+    case 'UI.gs':
+      code = fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8');
+      break;
+    case 'Code.gs':
+      code = fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8');
+      break;
+    case 'tests.js':
+      code = fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8');
+      break;
+    default:
+      console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
+      return;
+  }
+
   vm.runInNewContext(code, context, resolvedPath);
 }
 

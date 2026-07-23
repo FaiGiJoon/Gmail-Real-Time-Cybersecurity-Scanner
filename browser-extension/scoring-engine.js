@@ -149,7 +149,15 @@ export function auditSenderAlignment(senderHeader) {
 
   const emailMatch = senderHeader.match(/<([^>]+)>/);
   const emailAddress = emailMatch ? emailMatch[1].toLowerCase() : senderHeader.toLowerCase().trim();
-  const displayName = senderHeader.replace(/<[^>]+>/g, "").replace(/["']/g, "").trim();
+
+  let displayName = senderHeader;
+  let prev;
+  do {
+    prev = displayName;
+    displayName = displayName.replace(/<[^>]+>/g, "");
+  } while (displayName !== prev);
+  displayName = displayName.replace(/["']/g, "").trim();
+
   const lowerDisplayName = displayName.toLowerCase();
 
   const senderDomain = emailAddress.split("@")[1] || "";
