@@ -287,14 +287,14 @@ function viewSanitizedContent(e) {
   const htmlBody = message.getBody();
 
   // Strip all HTML tags, scripts, images, and links
-  let sanitizedText = htmlBody
-    .replace(/<script\b[\s\S]*?<\/script>/gi, '') // Remove scripts
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ''); // Remove styles
-
+  let sanitizedText = htmlBody;
   let prev;
   do {
     prev = sanitizedText;
-    sanitizedText = sanitizedText.replace(/<[^>]+>/g, ' '); // Remove all other tags recursively
+    sanitizedText = sanitizedText
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '') // Remove scripts recursively
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '') // Remove styles recursively
+      .replace(/<[^>]+>/g, ' '); // Remove all other tags recursively
   } while (sanitizedText !== prev);
 
   sanitizedText = sanitizedText.replace(/\s+/g, ' ').trim(); // Normalize whitespace
