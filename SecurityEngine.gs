@@ -24,7 +24,14 @@ function extractHtmlLinks(html) {
   while ((match = CONSTANTS.LINK_REGEX.exec(html)) !== null) {
     const fullTag = match[0];
     const url = match[2];
-    const text = match[3].replace(/<[^>]*>?/gm, '').trim();
+
+    let text = match[3];
+    let prevText;
+    do {
+      prevText = text;
+      text = text.replace(/<[^>]*>?/gm, '');
+    } while (text !== prevText);
+    text = text.trim();
 
     // CSS-based hidden link detection
     let isHidden = false;
@@ -356,7 +363,15 @@ function auditSenderAlignment(senderHeader, internalDomain, vipList) {
   // Extract email and display name
   const emailMatch = decodedHeader.match(/<([^>]+)>/);
   const emailAddress = emailMatch ? emailMatch[1].toLowerCase() : decodedHeader.toLowerCase().trim();
-  const displayName = decodedHeader.replace(/<[^>]+>/g, "").replace(/["']/g, "").trim();
+
+  let displayName = decodedHeader;
+  let prev;
+  do {
+    prev = displayName;
+    displayName = displayName.replace(/<[^>]+>/g, "");
+  } while (displayName !== prev);
+  displayName = displayName.replace(/["']/g, "").trim();
+
   const lowerDisplayName = displayName.toLowerCase();
 
   const senderDomain = emailAddress.split("@")[1] || "";

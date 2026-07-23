@@ -287,12 +287,17 @@ function viewSanitizedContent(e) {
   const htmlBody = message.getBody();
 
   // Strip all HTML tags, scripts, images, and links
-  const sanitizedText = htmlBody
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
-    .replace(/<[^>]+>/g, ' ') // Remove all other tags
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .trim();
+  let sanitizedText = htmlBody
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '') // Remove scripts
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ''); // Remove styles
+
+  let prev;
+  do {
+    prev = sanitizedText;
+    sanitizedText = sanitizedText.replace(/<[^>]+>/g, ' '); // Remove all other tags recursively
+  } while (sanitizedText !== prev);
+
+  sanitizedText = sanitizedText.replace(/\s+/g, ' ').trim(); // Normalize whitespace
 
   const card = CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle('Sanitized Content (Safe-View)'))
