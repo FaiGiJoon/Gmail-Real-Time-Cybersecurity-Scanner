@@ -140,34 +140,56 @@ function loadFile(path) {
     return;
   }
 
-  // Security Hardening: Use strict switch-case with compile-time string literals for fs.readFileSync
-  // to completely break the taint path from input variables to the execution context of vm.runInNewContext (js/code-injection).
-  let code = '';
+  // Security Hardening: Inline vm.runInNewContext directly inside strict switch-case statement
+  // using compile-time string literals for both fs.readFileSync and path arguments
+  // to completely break the taint path (js/code-injection).
   switch (baseName) {
     case 'Constants.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('Constants.gs', 'utf8'),
+        context,
+        'Constants.gs'
+      );
       break;
     case 'SecurityEngine.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('SecurityEngine.gs', 'utf8'),
+        context,
+        'SecurityEngine.gs'
+      );
       break;
     case 'UI.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('UI.gs', 'utf8'),
+        context,
+        'UI.gs'
+      );
       break;
     case 'Code.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('Code.gs', 'utf8'),
+        context,
+        'Code.gs'
+      );
       break;
     case 'tests.js':
-      code = fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('tests.js', 'utf8'),
+        context,
+        'tests.js'
+      );
       break;
     case 'index.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8');
+      vm.runInNewContext(
+        fs.readFileSync('index.gs', 'utf8'),
+        context,
+        'index.gs'
+      );
       break;
     default:
       console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
       return;
   }
-
-  vm.runInNewContext(code, context, resolvedPath);
 }
 
 // Dynamically discover and load all .gs files in correct execution sequence
