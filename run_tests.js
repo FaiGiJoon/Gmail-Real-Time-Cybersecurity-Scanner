@@ -1,6 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const pathModule = require('path');
+const crypto = require('crypto');
 
 // Mock Google Apps Script Globals
 const mockCardService = {
@@ -157,8 +158,19 @@ vm.runInNewContext(
   'index.gs'
 );
 
+const expectedTestsPath = pathModule.join(__dirname, 'tests.js');
+const resolvedTestsPath = pathModule.resolve(expectedTestsPath);
+if (resolvedTestsPath !== expectedTestsPath) {
+  throw new Error('Invalid tests.js path resolution.');
+}
+const testsSource = fs.readFileSync(resolvedTestsPath, 'utf8');
+const testsHash = crypto.createHash('sha256').update(testsSource, 'utf8').digest('hex');
+const expectedTestsHash = 'REPLACE_WITH_KNOWN_SHA256_OF_TESTS_JS';
+if (testsHash !== expectedTestsHash) {
+  throw new Error('tests.js integrity check failed.');
+}
 vm.runInNewContext(
-  fs.readFileSync('tests.js', 'utf8'),
+  testsSource,
   context,
   'tests.js'
 );
