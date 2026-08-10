@@ -165,8 +165,15 @@ if (resolvedTestsPath !== expectedTestsPath) {
 }
 const testsSource = fs.readFileSync(resolvedTestsPath, 'utf8');
 const testsHash = crypto.createHash('sha256').update(testsSource, 'utf8').digest('hex');
-const expectedTestsHash = 'REPLACE_WITH_KNOWN_SHA256_OF_TESTS_JS';
-if (testsHash !== expectedTestsHash) {
+const expectedTestsHash = process.env.TESTS_JS_SHA256;
+if (
+  typeof expectedTestsHash !== 'string' ||
+  expectedTestsHash === 'REPLACE_WITH_KNOWN_SHA256_OF_TESTS_JS' ||
+  !/^[a-f0-9]{64}$/i.test(expectedTestsHash)
+) {
+  throw new Error('Missing or invalid TESTS_JS_SHA256 for tests.js integrity check.');
+}
+if (testsHash !== expectedTestsHash.toLowerCase()) {
   throw new Error('tests.js integrity check failed.');
 }
 vm.runInNewContext(
