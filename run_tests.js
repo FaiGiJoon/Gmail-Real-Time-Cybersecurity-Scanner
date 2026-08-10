@@ -123,86 +123,44 @@ const context = {
 };
 context.globalThis = context;
 
-function loadFile(path) {
-  // Only execute known project script files.
-  const allowedFiles = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'tests.js', 'index.gs'];
-  const baseName = pathModule.basename(path);
+// Hardcoded load sequence with zero user/external input variables
+// Security Hardening: Use strict direct calls with compile-time string literals for both fs.readFileSync
+// and vm.runInNewContext to completely eliminate any taint paths (js/code-injection).
 
-  if (!allowedFiles.includes(baseName)) {
-    console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
-    return;
-  }
+vm.runInNewContext(
+  fs.readFileSync('Constants.gs', 'utf8'),
+  context,
+  'Constants.gs'
+);
 
-  const baseDir = pathModule.resolve(__dirname);
-  const resolvedPath = pathModule.resolve(baseDir, baseName);
-  if (!resolvedPath.startsWith(baseDir + pathModule.sep)) {
-    console.warn(`Warning: File path ${path} resolves outside allowed directory, skipping.`);
-    return;
-  }
+vm.runInNewContext(
+  fs.readFileSync('SecurityEngine.gs', 'utf8'),
+  context,
+  'SecurityEngine.gs'
+);
 
-  // Security Hardening: Inline vm.runInNewContext directly inside strict switch-case statement
-  // using compile-time string literals for both fs.readFileSync and path arguments
-  // to completely break the taint path (js/code-injection).
-  switch (baseName) {
-    case 'Constants.gs':
-      vm.runInNewContext(
-        fs.readFileSync('Constants.gs', 'utf8'),
-        context,
-        'Constants.gs'
-      );
-      break;
-    case 'SecurityEngine.gs':
-      vm.runInNewContext(
-        fs.readFileSync('SecurityEngine.gs', 'utf8'),
-        context,
-        'SecurityEngine.gs'
-      );
-      break;
-    case 'UI.gs':
-      vm.runInNewContext(
-        fs.readFileSync('UI.gs', 'utf8'),
-        context,
-        'UI.gs'
-      );
-      break;
-    case 'Code.gs':
-      vm.runInNewContext(
-        fs.readFileSync('Code.gs', 'utf8'),
-        context,
-        'Code.gs'
-      );
-      break;
-    case 'tests.js':
-      vm.runInNewContext(
-        fs.readFileSync('tests.js', 'utf8'),
-        context,
-        'tests.js'
-      );
-      break;
-    case 'index.gs':
-      vm.runInNewContext(
-        fs.readFileSync('index.gs', 'utf8'),
-        context,
-        'index.gs'
-      );
-      break;
-    default:
-      console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
-      return;
-  }
-}
+vm.runInNewContext(
+  fs.readFileSync('UI.gs', 'utf8'),
+  context,
+  'UI.gs'
+);
 
-// Dynamically discover and load all .gs files in correct execution sequence
-const gsFilesInDir = fs.readdirSync('.').filter(f => f.endsWith('.gs') && f !== 'tests.js');
-const orderedSeed = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs'];
-const extraGsFiles = gsFilesInDir.filter(f => !orderedSeed.includes(f));
-const gsFilesToLoad = [...orderedSeed, ...extraGsFiles];
+vm.runInNewContext(
+  fs.readFileSync('Code.gs', 'utf8'),
+  context,
+  'Code.gs'
+);
 
-gsFilesToLoad.forEach(file => {
-  loadFile(file);
-});
+vm.runInNewContext(
+  fs.readFileSync('index.gs', 'utf8'),
+  context,
+  'index.gs'
+);
 
-// Load the unit test suite last
-loadFile('tests.js');
+vm.runInNewContext(
+  fs.readFileSync('tests.js', 'utf8'),
+  context,
+  'tests.js'
+);
 
 context.runTests();
