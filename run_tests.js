@@ -152,8 +152,19 @@ vm.runInNewContext(
   'Code.gs'
 );
 
+const expectedIndexPath = pathModule.join(__dirname, 'index.gs');
+const resolvedIndexPath = pathModule.resolve(expectedIndexPath);
+if (resolvedIndexPath !== expectedIndexPath) {
+  throw new Error('Invalid index.gs path resolution.');
+}
+const indexSource = fs.readFileSync(resolvedIndexPath, 'utf8');
+const indexHash = crypto.createHash('sha256').update(indexSource, 'utf8').digest('hex');
+const expectedIndexHash = 'REPLACE_WITH_KNOWN_SHA256_OF_INDEX_GS';
+if (indexHash !== expectedIndexHash) {
+  throw new Error('index.gs integrity check failed.');
+}
 vm.runInNewContext(
-  fs.readFileSync('index.gs', 'utf8'),
+  indexSource,
   context,
   'index.gs'
 );
