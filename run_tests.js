@@ -125,7 +125,7 @@ context.globalThis = context;
 
 function loadFile(path) {
   // Only execute known project script files.
-  const allowedFiles = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'tests.js'];
+  const allowedFiles = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'tests.js', 'index.gs'];
   const baseName = pathModule.basename(path);
 
   if (!allowedFiles.includes(baseName)) {
@@ -158,6 +158,9 @@ function loadFile(path) {
       break;
     case 'tests.js':
       code = fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8');
+      break;
+    case 'index.gs':
+      code = fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8');
       break;
     default:
       console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
