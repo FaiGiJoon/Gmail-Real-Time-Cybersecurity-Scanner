@@ -1,6 +1,8 @@
+const pathModule = require('path');
+
 const fs = require('fs');
 const vm = require('vm');
-const pathModule = require('path');
+
 
 // Mock Google Apps Script Globals
 const mockCardService = {
@@ -123,12 +125,14 @@ const context = {
 };
 context.globalThis = context;
 
-// Execute project files in hardcoded sequence using string literals to prevent CodeQL code-injection (js/code-injection).
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8'), context, pathModule.join(__dirname, 'Constants.gs'));
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8'), context, pathModule.join(__dirname, 'SecurityEngine.gs'));
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8'), context, pathModule.join(__dirname, 'UI.gs'));
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8'), context, pathModule.join(__dirname, 'Code.gs'));
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8'), context, pathModule.join(__dirname, 'index.gs'));
-vm.runInNewContext(fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8'), context, pathModule.join(__dirname, 'tests.js'));
+vm.createContext(context);
+
+// Hardcoded inline execution using string literal paths to prevent CodeQL code-injection alerts.
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8'), context, { filename: 'Constants.gs' });
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8'), context, { filename: 'SecurityEngine.gs' });
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8'), context, { filename: 'UI.gs' });
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8'), context, { filename: 'Code.gs' });
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8'), context, { filename: 'index.gs' });
+vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8'), context, { filename: 'tests.js' });
 
 context.runTests();

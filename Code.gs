@@ -293,9 +293,9 @@ function viewSanitizedContent(e) {
   do {
     prev = sanitizedText;
     sanitizedText = sanitizedText
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '') // Remove scripts
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')   // Remove styles
-      .replace(/<[^>]+>/g, ' ');                            // Remove all other tags
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ') // Remove scripts
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')   // Remove styles
+      .replace(/<[^>]+>/g, ' ');                                  // Remove all other tags
   } while (sanitizedText !== prev);
 
   sanitizedText = sanitizedText.replace(/\s+/g, ' ').trim(); // Normalize whitespace
