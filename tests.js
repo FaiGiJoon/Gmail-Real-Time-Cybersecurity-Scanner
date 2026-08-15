@@ -252,8 +252,8 @@ function testSanitizeContent() {
     do {
       prev = sanitized;
       sanitized = sanitized
-        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
         .replace(/<[^>]+>/g, ' ');
     } while (sanitized !== prev);
     return sanitized.replace(/\s+/g, ' ').trim();
