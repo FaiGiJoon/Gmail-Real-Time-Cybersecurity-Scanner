@@ -1,7 +1,15 @@
 const pathModule = require('path');
 
 const fs = require('fs');
-const vm = require('vm');
+
+// Register custom module loader for .gs files so require() can load them directly into CJS without vm evaluation.
+require.extensions['.gs'] = function(module, filename) {
+  let content = fs.readFileSync(filename, 'utf8');
+  // Bind top-level function declarations and variables to globalThis and global
+  content = content.replace(/^function\s+([a-zA-Z0-9_$]+)\s*\(/gm, 'globalThis.$1 = global.$1 = function $1(');
+  content = content.replace(/^(const|var|let)\s+([a-zA-Z0-9_$]+)\s*=/gm, 'globalThis.$2 = global.$2 =');
+  module._compile(content, filename);
+};
 
 
 // Mock Google Apps Script Globals
@@ -125,14 +133,30 @@ const context = {
 };
 context.globalThis = context;
 
-vm.createContext(context);
+// Populate global context with mocks
+Object.assign(global, context);
+global.globalThis = global;
 
-// Hardcoded inline execution using string literal paths to prevent CodeQL code-injection alerts.
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8'), context, { filename: 'Constants.gs' });
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8'), context, { filename: 'SecurityEngine.gs' });
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8'), context, { filename: 'UI.gs' });
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8'), context, { filename: 'Code.gs' });
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8'), context, { filename: 'index.gs' });
-vm.runInContext(fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8'), context, { filename: 'tests.js' });
+// Load Google Apps Script files via require
+require('./Constants.gs');
+require('./SecurityEngine.gs');
+require('./UI.gs');
+require('./Code.gs');
+require('./index.gs');
 
-context.runTests();
+// Custom loader for tests.js to bind functions to globalThis
+const originalJsExtension = require.extensions['.js'];
+require.extensions['.js'] = function(module, filename) {
+  if (filename.endsWith('tests.js')) {
+    let content = fs.readFileSync(filename, 'utf8');
+    content = content.replace(/^function\s+([a-zA-Z0-9_$]+)\s*\(/gm, 'globalThis.$1 = global.$1 = function $1(');
+    content = content.replace(/^(const|var|let)\s+([a-zA-Z0-9_$]+)\s*=/gm, 'globalThis.$2 = global.$2 =');
+    module._compile(content, filename);
+  } else {
+    originalJsExtension(module, filename);
+  }
+};
+
+require('./tests.js');
+
+globalThis.runTests();
