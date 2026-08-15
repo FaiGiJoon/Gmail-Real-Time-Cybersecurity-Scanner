@@ -286,15 +286,16 @@ function viewSanitizedContent(e) {
   const message = GmailApp.getMessageById(messageId);
   const htmlBody = message.getBody();
 
-  // Strip all HTML tags, scripts, images, and links
-  let sanitizedText = htmlBody
-    .replace(/<script\b[\s\S]*?<\/script>/gi, '') // Remove scripts
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ''); // Remove styles
+  // Strip all HTML tags, scripts, images, and links recursively
+  let sanitizedText = htmlBody;
 
   let prev;
   do {
     prev = sanitizedText;
-    sanitizedText = sanitizedText.replace(/<[^>]+>/g, ' '); // Remove all other tags recursively
+    sanitizedText = sanitizedText
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ') // Remove scripts
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')   // Remove styles
+      .replace(/<[^>]+>/g, ' ');                                  // Remove all other tags
   } while (sanitizedText !== prev);
 
   sanitizedText = sanitizedText.replace(/\s+/g, ' ').trim(); // Normalize whitespace
