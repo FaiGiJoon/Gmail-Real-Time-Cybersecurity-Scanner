@@ -2,6 +2,10 @@ import { levenshteinEditDistance } from 'levenshtein-edit-distance';
 
 export const CONSTANTS = {
   TYPOSQUAT_BRANDS: ['google', 'microsoft', 'paypal', 'amazon', 'apple', 'netflix', 'facebook', 'spotify'],
+  OFFICIAL_DOMAINS: ['spotify.com', 'news.spotify.com', 'support.spotify.com'],
+  INTERNAL_DOMAIN: 'spotify.com',
+  VIP_LIST: ['Daniel Ek', 'Martin Lorentzon', 'Paul Vogel', 'Dustin Hoffman'],
+
   LINGUISTIC_WEIGHTS: {
     'urgent': 10,
     'immediate action': 10,
@@ -31,6 +35,9 @@ export const CONSTANTS = {
   RELAY_AUDIT_PENALTY: 35,
   HIDDEN_LINK_PENALTY: 25,
   RECEIVED_CHAIN_PENALTY: 40,
+  SENDER_ALIGNMENT_PENALTY: 35,
+  VIP_IMPERSONATION_PENALTY: 30,
+  VIP_TYPOSQUAT_PENALTY: 20,
   URL_REGEX: /https?:\/\/[^\s<"']+/g
 };
 
@@ -133,6 +140,16 @@ export function calculateScore(data) {
     }
   }
 
+  if (data.from) {
+    const alignment = auditSenderAlignment(data.from);
+    if (alignment.isSpoofed) {
+      points -= alignment.penaltyWeight;
+      alignment.details.forEach(detail => {
+        if (!warnings.includes(detail)) warnings.push(detail);
+      });
+    }
+  }
+
   const generalWarnings = warnings.filter(w =>
     !w.includes('Link text mismatch') &&
     !w.includes('Malicious URL') &&
@@ -162,6 +179,80 @@ export function calculateScore(data) {
   return Math.max(0, points);
 }
 
+/**
+ * Audits sender alignment for spoofing and VIP impersonation.
+ */
+export function auditSenderAlignment(senderHeader) {
+  const result = {
+    isSpoofed: false,
+    penaltyWeight: 0,
+    details: []
+  };
+
+  if (!senderHeader) return result;
+
+  const emailMatch = senderHeader.match(/<([^>]+)>/);
+  const emailAddress = emailMatch ? emailMatch[1].toLowerCase() : senderHeader.toLowerCase().trim();
+
+  let displayName = senderHeader;
+  let prev;
+  do {
+    prev = displayName;
+    displayName = displayName.replace(/<[^>]+>/g, "");
+  } while (displayName !== prev);
+  displayName = displayName.replace(/["']/g, "").trim();
+
+  const lowerDisplayName = displayName.toLowerCase();
+
+  const senderDomain = emailAddress.split("@")[1] || "";
+  const isInternalEmail = senderDomain === CONSTANTS.INTERNAL_DOMAIN.toLowerCase();
+
+  const lowerInternalDomain = CONSTANTS.INTERNAL_DOMAIN.toLowerCase();
+  const domainParts = lowerInternalDomain.split('.');
+  const domainName = domainParts[0];
+
+  if ((lowerDisplayName.includes(lowerInternalDomain) || lowerDisplayName.includes(domainName)) && !isInternalEmail) {
+    result.isSpoofed = true;
+    result.penaltyWeight += CONSTANTS.SENDER_ALIGNMENT_PENALTY;
+    result.details.push("CRITICAL: Display name implies internal domain, but origin is external.");
+  }
+
+  let vipFound = false;
+  CONSTANTS.VIP_LIST.forEach(vip => {
+    if (vipFound) return;
+    const lowerVip = vip.toLowerCase();
+
+    if (lowerDisplayName.includes(lowerVip) && !isInternalEmail) {
+      result.isSpoofed = true;
+      result.penaltyWeight += CONSTANTS.VIP_IMPERSONATION_PENALTY;
+      result.details.push(`HIGH: Direct impersonation of VIP "${vip}" detected from external source.`);
+      vipFound = true;
+      return;
+    }
+
+    const nameParts = lowerDisplayName.split(/\s+/);
+    const vipParts = lowerVip.split(/\s+/);
+
+    nameParts.forEach(part => {
+      if (vipFound) return;
+      vipParts.forEach(vPart => {
+        if (vipFound) return;
+        if (part !== vPart && part.length > 3 && vPart.length > 3) {
+          const distance = levenshteinEditDistance(part, vPart);
+          if (distance === 1) {
+            result.isSpoofed = true;
+            result.penaltyWeight += CONSTANTS.VIP_TYPOSQUAT_PENALTY;
+            result.details.push(`MEDIUM: Potential typosquatting of VIP name part "${vPart}" as "${part}".`);
+            vipFound = true;
+          }
+        }
+      });
+    });
+  });
+
+  return result;
+}
+
 export function isTyposquatted(url) {
   try {
     const domain = new URL(url).hostname.toLowerCase();
@@ -169,7 +260,7 @@ export function isTyposquatted(url) {
     if (parts.length < 2) return null;
 
     let mainDomain = parts[parts.length - 2];
-    if (['co', 'com', 'org', 'net', 'edu', 'gov'].includes(mainDomain) && parts.length > 2) {
+    if (['co', 'com', 'org', 'net', 'edu', 'gov', 'ac'].includes(mainDomain) && parts.length > 2) {
       mainDomain = parts[parts.length - 3];
     }
 
