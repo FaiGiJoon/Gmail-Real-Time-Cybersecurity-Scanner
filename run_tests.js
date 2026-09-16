@@ -1,9 +1,8 @@
 const fs = require('fs');
-const vm = require('vm');
 const pathModule = require('path');
 
-// Mock Google Apps Script Globals
-const mockCardService = {
+// Mock Google Apps Script Globals bound directly to globalThis
+globalThis.CardService = {
   newCardBuilder: () => ({ setHeader: () => ({ addSection: () => ({ build: () => ({}) }) }) }),
   newCardHeader: () => ({ setTitle: () => ({ setSubtitle: () => ({}) }) }),
   newCardSection: () => ({ addWidget: () => ({ setHeader: () => ({ setCollapsible: () => ({}) }) }) }),
@@ -18,7 +17,7 @@ const mockCardService = {
   TextButtonStyle: { FILLED: 'FILLED' }
 };
 
-const mockGmailApp = {
+globalThis.GmailApp = {
   getMessageById: (id) => ({
     getId: () => id,
     getThread: () => ({
@@ -39,7 +38,7 @@ const mockGmailApp = {
   createLabel: (name) => ({ name: name })
 };
 
-const mockUrlFetchApp = {
+globalThis.UrlFetchApp = {
   fetch: (url, options) => {
     // Basic mock for unshortenUrl and checkSafeBrowsing
     if (url && url.includes('safebrowsing')) {
@@ -75,7 +74,7 @@ const mockUrlFetchApp = {
   }
 };
 
-const mockPropertiesService = {
+globalThis.PropertiesService = {
   getScriptProperties: () => ({ getProperty: () => 'MOCK_KEY' }),
   getUserProperties: () => ({
     getProperty: () => null,
@@ -83,21 +82,21 @@ const mockPropertiesService = {
   })
 };
 
-const mockCacheService = {
+globalThis.CacheService = {
   getUserCache: () => ({
     get: (key) => null,
     put: (key, val, sec) => {}
   })
 };
 
-const mockLockService = {
+globalThis.LockService = {
   getUserLock: () => ({
     waitLock: () => {},
     releaseLock: () => {}
   })
 };
 
-const mockUtilities = {
+globalThis.Utilities = {
   unzip: () => { throw new Error('password'); }, // To test encrypted zip detection
   computeDigest: () => [1, 2, 3],
   DigestAlgorithm: { SHA_256: 'SHA_256' },
@@ -109,78 +108,41 @@ const mockUtilities = {
   Charset: { UTF_8: 'UTF_8' }
 };
 
-const context = {
-  CardService: mockCardService,
-  UrlFetchApp: mockUrlFetchApp,
-  PropertiesService: mockPropertiesService,
-  CacheService: mockCacheService,
-  LockService: mockLockService,
-  Utilities: mockUtilities,
-  GmailApp: mockGmailApp,
-  console: console,
-  URL: require('url').URL,
-  globalThis: {}
+globalThis.URL = require('url').URL;
+
+// Helper to transform top-level declarations into globalThis properties without affecting function-local scope
+const transformCode = (content) => {
+  content = content.replace(/^const\s+([A-Za-z0-9_]+)\s*=/gm, (match, p1) => `globalThis.${p1} =`);
+  content = content.replace(/^var\s+([A-Za-z0-9_]+)\s*=/gm, (match, p1) => `globalThis.${p1} =`);
+  content = content.replace(/^function\s+([A-Za-z0-9_]+)\s*\(/gm, (match, p1) => `globalThis.${p1} = function ${p1}(`);
+  return content;
 };
-context.globalThis = context;
 
-function loadFile(path) {
-  // Only execute known project script files.
-  const allowedFiles = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'tests.js', 'index.gs'];
-  const baseName = pathModule.basename(path);
+// Security Hardening: Use Node's standard module loader via require.extensions['.gs']
+// to load and compile script files directly without using vm code execution sinks (js/code-injection).
+require.extensions['.gs'] = function(module, filename) {
+  const content = fs.readFileSync(filename, 'utf8');
+  module._compile(transformCode(content), filename);
+};
 
-  if (!allowedFiles.includes(baseName)) {
-    console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
-    return;
+// Custom loader extension for tests.js so top-level functions in tests.js are also attached to globalThis
+const originalJsLoader = require.extensions['.js'];
+require.extensions['.js'] = function(module, filename) {
+  if (filename.endsWith('tests.js')) {
+    const content = fs.readFileSync(filename, 'utf8');
+    module._compile(transformCode(content), filename);
+  } else {
+    originalJsLoader(module, filename);
   }
+};
 
-  const baseDir = pathModule.resolve(__dirname);
-  const resolvedPath = pathModule.resolve(baseDir, baseName);
-  if (!resolvedPath.startsWith(baseDir + pathModule.sep)) {
-    console.warn(`Warning: File path ${path} resolves outside allowed directory, skipping.`);
-    return;
+// Load script files in required sequence via standard require()
+const filesToLoad = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs', 'index.gs', 'tests.js'];
+filesToLoad.forEach(file => {
+  const resolvedPath = pathModule.join(__dirname, file);
+  if (fs.existsSync(resolvedPath)) {
+    require(resolvedPath);
   }
-
-  // Security Hardening: Use strict switch-case with compile-time string literals for fs.readFileSync
-  // to completely break the taint path from input variables to the execution context of vm.runInNewContext (js/code-injection).
-  let code = '';
-  switch (baseName) {
-    case 'Constants.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'Constants.gs'), 'utf8');
-      break;
-    case 'SecurityEngine.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'SecurityEngine.gs'), 'utf8');
-      break;
-    case 'UI.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'UI.gs'), 'utf8');
-      break;
-    case 'Code.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'Code.gs'), 'utf8');
-      break;
-    case 'tests.js':
-      code = fs.readFileSync(pathModule.join(__dirname, 'tests.js'), 'utf8');
-      break;
-    case 'index.gs':
-      code = fs.readFileSync(pathModule.join(__dirname, 'index.gs'), 'utf8');
-      break;
-    default:
-      console.warn(`Warning: Expected file ${path} is not recognized/registered, skipping.`);
-      return;
-  }
-
-  vm.runInNewContext(code, context, resolvedPath);
-}
-
-// Dynamically discover and load all .gs files in correct execution sequence
-const gsFilesInDir = fs.readdirSync('.').filter(f => f.endsWith('.gs') && f !== 'tests.js');
-const orderedSeed = ['Constants.gs', 'SecurityEngine.gs', 'UI.gs', 'Code.gs'];
-const extraGsFiles = gsFilesInDir.filter(f => !orderedSeed.includes(f));
-const gsFilesToLoad = [...orderedSeed, ...extraGsFiles];
-
-gsFilesToLoad.forEach(file => {
-  loadFile(file);
 });
 
-// Load the unit test suite last
-loadFile('tests.js');
-
-context.runTests();
+globalThis.runTests();
