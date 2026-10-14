@@ -1,0 +1,21 @@
+{
+  "name": "gmail-security-scanner",
+  "version": "1.2.0",
+  "description": "In-Situ Gmail Real-Time Cybersecurity Scanner and Claude Agent Skill powered by Bun & MCP",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "test:legacy": "bun run_tests.js && cd cli-extension && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "dotenv": "^18.0.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
