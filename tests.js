@@ -364,6 +364,14 @@ function testVerifySender() {
       console.log(`PASSED: from="${c.from}"`);
     }
   });
+
+  // MIME-encoded display name spoofing check
+  const mimeHeaderCase = '=?UTF-8?B?c3VwcG9ydEBnb29nbGUuY29t?= <scammer@evil.com>'; // "support@google.com" <scammer@evil.com>
+  if (verifySender(mockMessage(mimeHeaderCase, mimeHeaderCase)) === false) {
+    console.log('PASSED: MIME-encoded verifySender check');
+  } else {
+    console.error('FAILED: MIME-encoded verifySender check');
+  }
 }
 
 function testNeutralizeLogic() {
@@ -563,6 +571,25 @@ function testSpotifyImpersonation() {
   let passed = true;
   if (!scanData.isSpotifyImpersonation) {
     console.error('FAILED: Spotify impersonation not detected in scanData');
+    passed = false;
+  }
+
+  // Test Protocol-Relative redirect
+  globalThis.UrlFetchApp.fetch = (url, options) => {
+    if (url === 'http://proto-rel.com') {
+      return {
+        getHeaders: () => ({ 'Location': '//target-proto.com/path' }),
+        getContentText: () => ''
+      };
+    }
+    return { getHeaders: () => ({}), getContentText: () => '' };
+  };
+
+  const protoChain = unshortenUrlChain('http://proto-rel.com');
+  if (protoChain.some(u => u === 'http://target-proto.com/path')) {
+    console.log('PASSED: Enhanced unshortenUrlChain (Protocol-Relative)');
+  } else {
+    console.error('FAILED: Enhanced unshortenUrlChain (Protocol-Relative). Chain: ' + JSON.stringify(protoChain));
     passed = false;
   }
   if (score.level !== CONSTANTS.THREAT_LEVELS.RED) {

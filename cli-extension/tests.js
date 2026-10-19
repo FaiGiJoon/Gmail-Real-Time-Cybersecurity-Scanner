@@ -1,4 +1,27 @@
-import { calculateScore, isTyposquatted, analyzeLinguisticDrift } from './scoring-engine.js';
+import { calculateScore, isTyposquatted, analyzeLinguisticDrift, auditSenderAlignment } from './scoring-engine.js';
+
+function testAuditSenderAlignmentCLI() {
+  console.log('Testing auditSenderAlignment in CLI extension...');
+  const header = '"Daniel Ek" <daniel@evil.com>';
+  const alignment = auditSenderAlignment(header);
+
+  if (alignment.isSpoofed && alignment.penaltyWeight === 30) {
+    console.log('PASSED: auditSenderAlignment CLI');
+  } else {
+    console.error('FAILED: auditSenderAlignment CLI', alignment);
+  }
+}
+
+function testIsTyposquattedCLI() {
+  console.log('Testing isTyposquatted multi-part SLD in CLI extension...');
+  const url = 'https://amaz0n.co.uk';
+  const result = isTyposquatted(url);
+  if (result === 'amazon') {
+    console.log('PASSED: isTyposquatted CLI');
+  } else {
+    console.error('FAILED: isTyposquatted CLI. Got: ' + result);
+  }
+}
 
 function testLinguisticDrift() {
   console.log('Testing Linguistic Drift Analysis...');
@@ -37,5 +60,7 @@ function testScoring() {
   });
 }
 
+testAuditSenderAlignmentCLI();
+testIsTyposquattedCLI();
 testLinguisticDrift();
 testScoring();

@@ -193,7 +193,10 @@ function unshortenUrlChain(url) {
 
       if (nextUrl && nextUrl !== currentUrl && !chain.includes(nextUrl)) {
         // Resolve relative URLs
-        if (!nextUrl.startsWith('http')) {
+        if (nextUrl.startsWith('//')) {
+          const urlObj = new URL(currentUrl);
+          nextUrl = `${urlObj.protocol}${nextUrl}`;
+        } else if (!nextUrl.startsWith('http')) {
           const urlObj = new URL(currentUrl);
           if (nextUrl.startsWith('/')) {
             const origin = urlObj.origin || `${urlObj.protocol}//${urlObj.host}`;
@@ -716,7 +719,9 @@ function auditRelayPath(message) {
  * @return {boolean} True if they appear to match or if no display name is present.
  */
 function verifySender(message) {
-  const headersToCheck = [message.getFrom(), message.getReplyTo()];
+  const rawFrom = decodeMimeHeader(message.getFrom());
+  const rawReplyTo = decodeMimeHeader(message.getReplyTo());
+  const headersToCheck = [rawFrom, rawReplyTo];
   
   for (const header of headersToCheck) {
     if (!header) continue;
@@ -869,24 +874,12 @@ function batchDetectQrCodes(blobs) {
 
       // Deep search for URLs in all text found by OCR
       if (resp.fullTextAnnotation && resp.fullTextAnnotation.text) {
-        const text = resp.fullTextAnnotation.text;
+        let text = resp.fullTextAnnotation.text;
+        // De-obfuscate text first (e.g. hxxp -> http, [.] -> .)
+        text = text.replace(/h[x]{2}p/gi, 'http').replace(/\[\.\]/g, '.');
+
         const matches = text.match(CONSTANTS.URL_REGEX);
         if (matches) extractedUrls.push(...matches);
-
-        // Also check for common obfuscated patterns like "hxxp" or "[.]"
-        const obfuscated = text.match(/h[x]{2}ps?:\/\/[^\s<"']+/gi);
-        if (obfuscated) {
-          obfuscated.forEach(u => extractedUrls.push(u.replace(/h[x]{2}p/i, 'http')));
-        }
-
-        const dotObfuscated = text.match(/https?:\/\/[^\s<"']+/gi);
-        if (dotObfuscated) {
-          dotObfuscated.forEach(u => {
-            if (u.includes('[.]')) {
-              extractedUrls.push(u.replace(/\[\.\]/g, '.'));
-            }
-          });
-        }
       }
 
       // Explicit barcode detection handling
