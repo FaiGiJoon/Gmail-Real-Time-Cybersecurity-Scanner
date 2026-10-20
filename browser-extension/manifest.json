@@ -1,37 +1,25 @@
 {
   "manifest_version": 3,
   "name": "Gmail Cybersecurity Scanner",
-  "version": "1.0.0",
-  "description": "A Chromium-based browser extension for real-time Gmail security auditing and threat mitigation.",
-  "permissions": [
-    "storage",
-    "identity",
-    "activeTab",
-    "scripting"
-  ],
+  "version": "2.0.0",
+  "description": "Scans the Gmail message you have open for spoofing, risky links and dangerous attachments, and shows why.",
+  "permissions": ["storage", "identity", "activeTab"],
   "host_permissions": [
     "https://gmail.googleapis.com/*",
     "https://safebrowsing.googleapis.com/*",
-    "https://vision.googleapis.com/*"
+    "https://rdap.org/*"
   ],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://mail.google.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
   "action": {
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
   },
   "options_page": "options.html",
   "oauth2": {
-    "client_id": "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.modify"
-    ]
+    "client_id": "REPLACE_WITH_YOUR_CHROME_EXTENSION_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/gmail.modify"]
   }
 }

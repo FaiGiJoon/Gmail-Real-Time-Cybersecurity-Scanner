@@ -1,32 +1,22 @@
-/**
- * options.js - Controller for extension settings.
- */
+const ids = ['sb', 'internal', 'vip', 'allow', 'deny'];
+const el = (id) => document.getElementById(id);
+const list = (v) => String(v || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase().replace(/^@/, '')).filter(Boolean).slice(0, 100);
+const names = (v) => String(v || '').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean).slice(0, 50);
 
-document.addEventListener('DOMContentLoaded', () => {
-  const sbInput = document.getElementById('safe-browsing-key');
-  const cvInput = document.getElementById('cloud-vision-key');
-  const vtInput = document.getElementById('virustotal-key');
-  const saveBtn = document.getElementById('save-btn');
-  const statusEl = document.getElementById('status');
-
-  // Load saved keys
-  chrome.storage.local.get(['SAFE_BROWSING_API_KEY', 'CLOUD_VISION_API_KEY', 'VIRUSTOTAL_API_KEY'], (result) => {
-    if (result.SAFE_BROWSING_API_KEY) sbInput.value = result.SAFE_BROWSING_API_KEY;
-    if (result.CLOUD_VISION_API_KEY) cvInput.value = result.CLOUD_VISION_API_KEY;
-    if (result.VIRUSTOTAL_API_KEY) vtInput.value = result.VIRUSTOTAL_API_KEY;
-  });
-
-  // Save keys
-  saveBtn.addEventListener('click', () => {
-    chrome.storage.local.set({
-      SAFE_BROWSING_API_KEY: sbInput.value.trim(),
-      CLOUD_VISION_API_KEY: cvInput.value.trim(),
-      VIRUSTOTAL_API_KEY: vtInput.value.trim()
-    }, () => {
-      statusEl.textContent = 'Settings saved successfully!';
-      setTimeout(() => {
-        statusEl.textContent = '';
-      }, 3000);
+document.addEventListener('DOMContentLoaded', async () => {
+  const s = await chrome.storage.local.get(['SAFE_BROWSING_API_KEY', 'config']);
+  const c = s.config || {};
+  el('sb').value = s.SAFE_BROWSING_API_KEY || '';
+  el('internal').value = c.internalDomain || '';
+  el('vip').value = (c.vipNames || []).join(', ');
+  el('allow').value = (c.allowDomains || []).join(', ');
+  el('deny').value = (c.denyDomains || []).join(', ');
+  el('save').addEventListener('click', async () => {
+    await chrome.storage.local.set({
+      SAFE_BROWSING_API_KEY: el('sb').value.trim(),
+      config: { internalDomain: list(el('internal').value)[0] || '', vipNames: names(el('vip').value), allowDomains: list(el('allow').value), denyDomains: list(el('deny').value) }
     });
+    el('status').textContent = 'Saved.';
+    setTimeout(() => { el('status').textContent = ''; }, 2500);
   });
 });
