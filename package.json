@@ -1,0 +1,15 @@
+{
+  "name": "gmail-real-time-cybersecurity-scanner-dev",
+  "private": true,
+  "description": "Development tooling for the Gmail scanner (tests and core sync). The Apps Script project is deployed with clasp; the CLI extension has its own package.json.",
+  "scripts": {
+    "sync-core": "node scripts/sync-core.js",
+    "check-core": "node scripts/sync-core.js --check",
+    "test:core": "node --test core/",
+    "test:addon": "node run_tests.js",
+    "test:extension": "node --test browser-extension/",
+    "test:cli": "cd cli-extension && node --test .",
+    "test": "npm run check-core && npm run test:core && npm run test:addon && npm run test:extension"
+  },
+  "engines": { "node": ">=20" }
+}

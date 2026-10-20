@@ -1,231 +1,102 @@
-/**
- * UI functions for the Gmail Add-on.
- * Version: 1.1.0 - Enhanced Security Features
- */
+/** Card builders. The card shows findings with evidence and says plainly what was not checked. */
+const UI = {
+  SEVERITY_LABEL: { critical: 'CRITICAL', high: 'HIGH', medium: 'MEDIUM', low: 'LOW', info: 'INFO' },
 
-/**
- * Builds the security card.
- * @param {Object} data Security scan data.
- * @return {GoogleAppsScript.Card_Service.Card}
- */
-function createSecurityCard(data) {
-  // Defensive guards for missing data properties
-  data.auth = data.auth || { dmarc: 'unknown', spf: 'unknown', dkim: 'unknown' };
-  data.urls = data.urls || [];
+  esc: function (s) {
+    return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  },
 
-  const score = calculateSecurityScore(data);
-  const cardHeader = CardService.newCardHeader()
-    .setTitle('Security Scan Result')
-    .setSubtitle(`Security Level: ${score.level}`);
+  notify: function (text) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(text))
+      .build();
+  },
 
-  const section = CardService.newCardSection();
+  navigate: function (card) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(card))
+      .build();
+  },
 
-  // Security Score Indicator
-  const scoreIcon = getScoreIcon(score.level);
-  section.addWidget(CardService.newDecoratedText()
-    .setText(`Status: ${score.status}`)
-    .setBottomLabel(`Score: ${score.points}/100`)
-    .setStartIcon(CardService.newIconImage().setIconUrl(scoreIcon)));
+  action: function (fn, params) {
+    return CardService.newAction().setFunctionName(fn).setParameters(params || {});
+  },
 
-  // Warnings / Security Details - Displays Top 3 Warnings Prominently
-  if (data.warnings && data.warnings.length > 0) {
-    const topWarnings = data.warnings.slice(0, 3);
-    let warningText = topWarnings.map(w => `⚠️ ${w}`).join('\n\n');
-    if (data.warnings.length > 3) {
-      warningText += `\n\n💬 (+ ${data.warnings.length - 3} more warnings detected. Run Deep Scan or check below.)`;
+  homeCard: function () {
+    const s = CardService.newCardSection()
+      .addWidget(CardService.newTextParagraph().setText('Open an email to scan it. Every email you open is checked for spoofing, risky links, dangerous attachments and phishing wording. The card lists what was found and what could not be checked.'))
+      .addWidget(CardService.newTextButton().setText('Settings').setOnClickAction(UI.action('handleOpenSettings')));
+    return CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader().setTitle('Cybersecurity Scanner').setSubtitle('Version ' + SCANNER.VERSION))
+      .addSection(s).build();
+  },
+
+  resultCard: function (r, messageId) {
+    const builder = CardService.newCardBuilder();
+    if (r.error) {
+      builder.setHeader(CardService.newCardHeader().setTitle('Scan failed').setSubtitle('This email was NOT checked'));
+      builder.addSection(CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph().setText(UI.esc(r.error)))
+        .addWidget(CardService.newTextButton().setText('Try again').setOnClickAction(UI.action('handleRescan', { messageId: messageId }))));
+      return builder.build();
     }
-    section.addWidget(CardService.newTextParagraph().setText(warningText));
-  } else {
-    section.addWidget(CardService.newTextParagraph().setText('✅ No immediate threats detected. Your message is secure.'));
-  }
+    const icon = SCANNER.LEVEL_ICONS[r.level];
+    builder.setHeader(CardService.newCardHeader()
+      .setTitle(r.status + ' (' + r.score + '/100)')
+      .setSubtitle((r.deep ? 'Deep scan' : 'Standard scan') + (r.incomplete ? ' - some checks skipped' : ''))
+      .setImageUrl(icon));
 
-  // Mitigation Tools
-  const toolsSection = CardService.newCardSection().setHeader('Mitigation Tools');
-
-  toolsSection.addWidget(CardService.newTextButton()
-    .setText('Neutralize Threat')
-    .setBackgroundColor('#d93025')
-    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-    .setOnClickAction(CardService.newAction()
-      .setFunctionName('confirmNeutralize')
-      .setParameters({messageId: data.messageId})));
-
-  if (score.level === CONSTANTS.THREAT_LEVELS.RED) {
-    toolsSection.addWidget(CardService.newTextButton()
-      .setText('View Sanitized Content')
-      .setOnClickAction(CardService.newAction()
-        .setFunctionName('viewSanitizedContent')
-        .setParameters({messageId: data.messageId})));
-  }
-
-  if (!data.isDeepScan) {
-    toolsSection.addWidget(CardService.newTextButton()
-      .setText('Deep Scan (Recursive Unshorten)')
-      .setOnClickAction(CardService.newAction()
-        .setFunctionName('handleDeepScan')
-        .setParameters({messageId: data.messageId})));
-  }
-
-  toolsSection.addWidget(CardService.newTextButton()
-    .setText('Quarantine Message')
-    .setOnClickAction(CardService.newAction()
-      .setFunctionName('handleQuarantine')
-      .setParameters({messageId: data.messageId})));
-
-  toolsSection.addWidget(CardService.newTextButton()
-    .setText('Report Phishing')
-    .setOnClickAction(CardService.newAction()
-      .setFunctionName('handleReportPhishing')
-      .setParameters({messageId: data.messageId})));
-
-  // Details
-  const detailsSection = CardService.newCardSection().setHeader('Scan Details').setCollapsible(true);
-  
-  detailsSection.addWidget(CardService.newDecoratedText()
-    .setText('Authentication')
-    .setBottomLabel(`SPF: ${data.auth.spf}, DKIM: ${data.auth.dkim}, DMARC: ${data.auth.dmarc}`));
-
-  const tlsText = data.isTls ? 'Encrypted (TLS)' : 'Unencrypted (No TLS)';
-  detailsSection.addWidget(CardService.newDecoratedText()
-    .setText('Transmission')
-    .setBottomLabel(tlsText)
-    .setStartIcon(CardService.newIconImage().setIconUrl(data.isTls ? CONSTANTS.ICONS.GREEN : CONSTANTS.ICONS.YELLOW)));
-
-  detailsSection.addWidget(CardService.newDecoratedText()
-    .setText('Links Found')
-    .setBottomLabel(`${data.urls.length} unique URLs scanned`));
-
-  detailsSection.addWidget(CardService.newDecoratedText()
-    .setText('Attachments')
-    .setBottomLabel(`${data.attachmentsCount} attachments analyzed`));
-
-  return CardService.newCardBuilder()
-    .setHeader(cardHeader)
-    .addSection(section)
-    .addSection(toolsSection)
-    .addSection(detailsSection)
-    .build();
-}
-
-/**
- * Calculates a security score and level using a composite formula.
- * $S = 100 - \sum w_i \cdot I_i$
- * @param {Object} data
- * @return {Object} Score details.
- */
-function calculateSecurityScore(data) {
-  let points = 100;
-  const warnings = data.warnings || [];
-
-  // Defensive guards for missing data properties
-  data.auth = data.auth || { dmarc: 'unknown', spf: 'unknown', dkim: 'unknown' };
-  data.urls = data.urls || [];
-
-  // DMARC Failure (-40)
-  if (data.auth.dmarc === 'fail') points -= 40;
-  else if (data.auth.dmarc === 'none' || data.auth.dmarc === 'unknown') points -= 10;
-
-  // SPF/DKIM Failures (-10 each)
-  if (data.auth.spf === 'fail') points -= 10;
-  if (data.auth.dkim === 'fail') points -= 10;
-
-  // Sender Mismatch (-30)
-  if (!data.senderVerified) points -= 30;
-
-  // Malware Detection (-80)
-  if (data.hasMalware) points -= 80;
-
-  // Phishing/Malicious Link detection (-60)
-  const hasPhishingLink = warnings.some(w => w.includes('Link text mismatch') || w.includes('Malicious URL') || w.includes('homograph'));
-  if (hasPhishingLink) points -= 60;
-
-  // Quishing (QR Malicious Link) Deduction (-25)
-  if (data.maliciousQrUrls && data.maliciousQrUrls.length > 0) {
-    points -= CONSTANTS.QR_THREAT_PENALTY;
-  }
-
-  // Relay Audit Deduction (-35)
-  if (warnings.some(w => w.includes('relay count') || w.includes('brand spoofing'))) {
-    points -= CONSTANTS.RELAY_AUDIT_PENALTY;
-  }
-
-  // Sentinel Phase: Received Chain Anomaly Deduction (-40)
-  if (data.relayMismatch) {
-    points -= CONSTANTS.RECEIVED_CHAIN_PENALTY;
-  }
-
-  // Hidden Link Deduction (-25)
-  if (warnings.some(w => w.includes('Hidden link detected'))) {
-    points -= CONSTANTS.HIDDEN_LINK_PENALTY;
-  }
-
-  // Linguistic Threat Weights
-  if (data.linguisticThreats) {
-    data.linguisticThreats.forEach(threat => {
-      points -= threat.weight;
+    const findings = CardService.newCardSection().setHeader('Why this score');
+    const real = (r.findings || []).filter(function (f) { return f.severity !== 'info'; });
+    if (!real.length) {
+      findings.addWidget(CardService.newTextParagraph().setText('No problems found by the checks that ran.'));
+    }
+    real.slice(0, 12).forEach(function (f) {
+      findings.addWidget(CardService.newDecoratedText()
+        .setTopLabel(UI.SEVERITY_LABEL[f.severity] || f.severity)
+        .setText('<b>' + UI.esc(f.title) + '</b>')
+        .setBottomLabel(UI.esc((f.detail || '') + (f.evidence ? ' [' + f.evidence + ']' : '')))
+        .setWrapText(true));
     });
+    if (real.length > 12) findings.addWidget(CardService.newTextParagraph().setText('+ ' + (real.length - 12) + ' more findings'));
+    builder.addSection(findings);
+
+    const infos = (r.findings || []).filter(function (f) { return f.severity === 'info'; });
+    if (infos.length || r.incomplete) {
+      const notes = CardService.newCardSection().setHeader('Notes').setCollapsible(true).setNumUncollapsibleWidgets(0);
+      infos.forEach(function (f) { notes.addWidget(CardService.newTextParagraph().setText(UI.esc(f.title + (f.detail ? ': ' + f.detail : '')))); });
+      if (r.incomplete) notes.addWidget(CardService.newTextParagraph().setText('<b>Not checked:</b> ' + UI.esc(r.skipped.join('; '))));
+      builder.addSection(notes);
+    }
+
+    const domain = r.from && r.from.domain;
+    const actions = CardService.newCardSection().setHeader('Actions');
+    const row = CardService.newButtonSet();
+    if (!r.deep) row.addButton(CardService.newTextButton().setText('Deep scan').setOnClickAction(UI.action('handleDeepScan', { messageId: messageId })));
+    row.addButton(CardService.newTextButton().setText('Neutralize').setOnClickAction(UI.action('handleNeutralize', { messageId: messageId })));
+    row.addButton(CardService.newTextButton().setText('Report').setOnClickAction(UI.action('handleReportPhishing', { messageId: messageId })));
+    actions.addWidget(row);
+    if (domain) {
+      actions.addWidget(CardService.newButtonSet()
+        .addButton(CardService.newTextButton().setText('Trust ' + domain).setOnClickAction(UI.action('handleTrustSender', { domain: domain })))
+        .addButton(CardService.newTextButton().setText('Block').setOnClickAction(UI.action('handleBlockSender', { domain: domain }))));
+    }
+    actions.addWidget(CardService.newTextButton().setText('Settings').setOnClickAction(UI.action('handleOpenSettings')));
+    builder.addSection(actions);
+    return builder.build();
+  },
+
+  settingsCard: function () {
+    const s = Settings.load();
+    const sec = CardService.newCardSection()
+      .addWidget(CardService.newTextInput().setFieldName('internalDomain').setTitle('Your own domain (for internal impersonation checks)').setValue(s.internalDomain))
+      .addWidget(CardService.newTextInput().setFieldName('vipNames').setTitle('VIP names, comma separated').setValue(s.vipNames.join(', ')))
+      .addWidget(CardService.newTextInput().setFieldName('allowDomains').setTitle('Trusted domains').setValue(s.allowDomains.join(', ')))
+      .addWidget(CardService.newTextInput().setFieldName('denyDomains').setTitle('Blocked domains').setValue(s.denyDomains.join(', ')))
+      .addWidget(CardService.newTextButton().setText('Save').setOnClickAction(UI.action('handleSaveSettings')))
+      .addWidget(CardService.newTextParagraph().setText('Optional API keys (Safe Browsing, VirusTotal) are set in the Apps Script project under Project Settings > Script properties.'));
+    return CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader().setTitle('Settings'))
+      .addSection(sec).build();
   }
-
-  // Spotify Impersonation Penalty (-40)
-  if (data.isSpotifyImpersonation) {
-    points -= CONSTANTS.SPOTIFY_IMPERSONATION_PENALTY;
-  }
-
-  // Sender Alignment & VIP Impersonation Penalty
-  if (data.alignmentPenalty) {
-    points -= data.alignmentPenalty;
-  }
-
-  // General warnings deduction (-20 each, excluding those already penalized)
-  const generalWarnings = warnings.filter(w =>
-    !w.includes('Link text mismatch') &&
-    !w.includes('Malicious URL') &&
-    !w.includes('homograph') &&
-    !w.includes('DMARC') &&
-    !w.includes('From') &&
-    !w.includes('QR Code detected')
-  );
-  points -= (generalWarnings.length * 20);
-
-  // --- Non-Linear Multiplier (Threat Escalation) ---
-  let multiplier = 1.0;
-
-  // Critical Combo: DMARC Fail + Malicious URL
-  if (data.auth.dmarc === 'fail' && hasPhishingLink) {
-    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.CRITICAL_COMBO);
-  }
-
-  // High Voltage: Multiple urgent lures + spoofing
-  const highLures = (data.linguisticThreats || []).filter(t => t.weight >= 15).length;
-  if (highLures >= 2 && !data.senderVerified) {
-    multiplier = Math.max(multiplier, CONSTANTS.SCORING_MULTIPLIERS.HIGH_VOLTAGE);
-  }
-
-  const basePenalty = 100 - points;
-  points = 100 - (basePenalty * multiplier);
-
-  points = Math.max(0, points);
-
-  let level = CONSTANTS.THREAT_LEVELS.GREEN;
-  let status = CONSTANTS.STATUS_TEXT.SECURE;
-  if (points < 40 || hasPhishingLink || (data.maliciousQrUrls && data.maliciousQrUrls.length > 0) || data.isSpotifyImpersonation) {
-    level = CONSTANTS.THREAT_LEVELS.RED;
-    status = CONSTANTS.STATUS_TEXT.HIGH_RISK;
-  } else if (points < 80) {
-    level = CONSTANTS.THREAT_LEVELS.YELLOW;
-    status = CONSTANTS.STATUS_TEXT.CAUTION;
-  }
-
-  return { points, level, status };
-}
-
-/**
- * Gets icon URL based on security level.
- */
-function getScoreIcon(level) {
-  switch (level) {
-    case CONSTANTS.THREAT_LEVELS.RED: return CONSTANTS.ICONS.RED;
-    case CONSTANTS.THREAT_LEVELS.YELLOW: return CONSTANTS.ICONS.YELLOW;
-    default: return CONSTANTS.ICONS.GREEN;
-  }
-}
+};
