@@ -1074,7 +1074,8 @@ function sanitizeForLlm(text) {
 
   // 2. Delimiter Guarding
   // Wrap the content in random tokens to prevent the LLM from treating content as instructions.
-  const token = `[USER_CONTENT_${Math.random().toString(36).substring(7)}]`;
+  // Utilities.getUuid() is cryptographically random, unlike Math.random(), so the delimiter cannot be guessed.
+  const token = `[USER_CONTENT_${Utilities.getUuid().replace(/-/g, '')}]`;
   return `${token}\n${sanitized}\n${token}`;
 }
 
@@ -1186,7 +1187,8 @@ function checkKeywordPhishing(urls, brands) {
       brands.forEach(brand => {
         // Use regex with word boundaries or separators to avoid false positives like "pineapple.com"
         // This looks for the brand as a standalone label in the domain (e.g., "apple-login.com" or "apple.secure.com")
-        const brandRegex = new RegExp(`(^|[.-])${brand}([.-]|$)`, 'i');
+        const escapedBrand = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const brandRegex = new RegExp(`(^|[.-])${escapedBrand}([.-]|$)`, 'i');
 
         if (brandRegex.test(hostname)) {
           // Double check it's not a generic official TLD-based domain (e.g., brand.org, brand.net)
