@@ -4,7 +4,7 @@ Run once on a test Gmail account before trusting the tool. Tests in CI prove log
 
 ## Pre-deploy
 - [ ] CI green (`npm test`), `npm run check-core` clean
-- [ ] PR #36 merged first (code-scanning fixes), then this branch rebased
+- [ ] PR #36 (code-scanning fixes) is already merged
 - [ ] Dependabot #40/#41: `cd cli-extension && npm install @modelcontextprotocol/sdk@latest && npm update proxy-addr`, commit the lockfile
 - [ ] Rollback: `git revert` the merge; add-on rollback = previous Apps Script version (Deploy > Manage deployments)
 
