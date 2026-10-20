@@ -288,8 +288,8 @@ function viewSanitizedContent(e) {
 
   // Strip all HTML tags, scripts, images, and links
   let sanitizedText = htmlBody
-    .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, '') // Remove scripts (also matches "</script >" and "</script foo>")
-    .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ''); // Remove styles
+    .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ') // Remove scripts (also matches "</script >" and "</script foo>")
+    .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' '); // Remove styles
 
   let prev;
   do {
