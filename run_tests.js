@@ -97,6 +97,7 @@ globalThis.LockService = {
 };
 
 globalThis.Utilities = {
+  getUuid: () => require('crypto').randomUUID(),
   unzip: () => { throw new Error('password'); }, // To test encrypted zip detection
   computeDigest: () => [1, 2, 3],
   DigestAlgorithm: { SHA_256: 'SHA_256' },
