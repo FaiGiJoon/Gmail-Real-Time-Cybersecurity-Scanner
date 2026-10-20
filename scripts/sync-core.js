@@ -3,7 +3,7 @@
  * Copies core/scanner-core.js to every place that needs its own copy:
  *   ScannerCore.gs                      (Google Apps Script cannot import files)
  *   browser-extension/scanner-core.js   (loaded by the service worker)
- *   cli-extension/scanner-core.js       (the CLI package is installed on its own)
+ *   cli-extension/scanner-core.cjs       (the CLI package is installed on its own)
  *
  * `node scripts/sync-core.js`          write the copies
  * `node scripts/sync-core.js --check`  fail if any copy is out of date (used by CI and tests)
@@ -19,7 +19,7 @@ const banner = (what) => `// GENERATED FILE - do not edit. Source: core/scanner-
 const targets = [
   { file: 'ScannerCore.gs', content: banner('Google Apps Script copy of the shared scanning core.') + source },
   { file: 'browser-extension/scanner-core.js', content: banner('Chrome extension copy of the shared scanning core.') + source },
-  { file: 'cli-extension/scanner-core.js', content: banner('CLI / MCP copy of the shared scanning core.') + source }
+  { file: 'cli-extension/scanner-core.cjs', content: banner('CLI / MCP copy of the shared scanning core.') + source }
 ];
 
 const check = process.argv.includes('--check');

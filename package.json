@@ -5,11 +5,11 @@
   "scripts": {
     "sync-core": "node scripts/sync-core.js",
     "check-core": "node scripts/sync-core.js --check",
-    "test:core": "node --test core/",
+    "test:core": "node --test core/scanner-core.test.js",
     "test:addon": "node run_tests.js",
-    "test:extension": "node --test browser-extension/",
-    "test:cli": "cd cli-extension && node --test .",
-    "test": "npm run check-core && npm run test:core && npm run test:addon && npm run test:extension"
+    "test:extension": "node --test browser-extension/engine.test.js",
+    "test:cli": "cd cli-extension && node --test tests.test.js",
+    "test": "npm run check-core && npm run test:core && npm run test:addon && npm run test:extension && npm run test:cli"
   },
   "engines": { "node": ">=20" }
 }

@@ -1,0 +1,4 @@
+# clasp pushes only what Apps Script can run. Everything else stays out of the project.
+**/*
+!appsscript.json
+!*.gs
