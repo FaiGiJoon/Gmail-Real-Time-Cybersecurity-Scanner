@@ -1,3 +1,5 @@
+> Note: this report describes the threat landscape and the strategy. See README.md for what the current code actually checks.
+
 # Threat Intelligence Report: The Gmail Cybercrime Landscape in 2026
 
 ## Overview

@@ -1,74 +1,54 @@
 import { google } from 'googleapis';
 
+/**
+ * Gmail I/O for the CLI/MCP server. Only the calls the scanner needs; nothing here can delete mail
+ * or send mail. Requires the gmail.modify scope (read + label + spam, no permanent delete).
+ */
 export class GmailBridge {
   constructor() {
-    this.auth = null;
     this.gmail = null;
   }
 
   async initialize() {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET,
-      process.env.GMAIL_REDIRECT_URI
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GMAIL_REFRESH_TOKEN
-    });
-
-    this.auth = oauth2Client;
-    this.gmail = google.gmail({ version: 'v1', auth: this.auth });
+    if (this.gmail) return;
+    const { GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN } = process.env;
+    if (!GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN) {
+      throw new Error('Missing GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET or GMAIL_REFRESH_TOKEN. See cli-extension/README.md.');
+    }
+    const oauth2Client = new google.auth.OAuth2(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+    oauth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN });
+    this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
   }
 
-  async listHighRiskThreads(maxResults = 10) {
-    const res = await this.gmail.users.threads.list({
-      userId: 'me',
-      maxResults: maxResults,
-      q: 'has:attachment OR "urgent" OR "wire transfer" OR "account suspended"'
-    });
-    return res.data.threads || [];
-  }
-
-  async getThreadDetails(threadId) {
-    const res = await this.gmail.users.threads.get({
-      userId: 'me',
-      id: threadId
-    });
+  async getMessage(id) {
+    const res = await this.gmail.users.messages.get({ userId: 'me', id, format: 'full' });
     return res.data;
+  }
+
+  async getThread(id) {
+    const res = await this.gmail.users.threads.get({ userId: 'me', id, format: 'minimal' });
+    return res.data;
+  }
+
+  async listMessageIds(q, maxResults) {
+    const res = await this.gmail.users.messages.list({ userId: 'me', q, maxResults });
+    return (res.data.messages || []).map((m) => m.id);
+  }
+
+  /** @returns {Promise<number[]>} attachment bytes (unsigned) */
+  async getAttachmentBytes(messageId, attachmentId) {
+    const res = await this.gmail.users.messages.attachments.get({ userId: 'me', messageId, id: attachmentId });
+    return Array.from(Buffer.from(res.data.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
   }
 
   async quarantineThread(threadId, labelName = 'Security Review') {
-    let labelId;
-    const labelsRes = await this.gmail.users.labels.list({ userId: 'me' });
-    const label = labelsRes.data.labels.find(l => l.name === labelName);
-
-    if (label) {
-      labelId = label.id;
-    } else {
-      const createRes = await this.gmail.users.labels.create({
-        userId: 'me',
-        requestBody: { name: labelName }
-      });
-      labelId = createRes.data.id;
-    }
-
+    const labels = (await this.gmail.users.labels.list({ userId: 'me' })).data.labels || [];
+    let label = labels.find((l) => l.name === labelName);
+    if (!label) label = (await this.gmail.users.labels.create({ userId: 'me', requestBody: { name: labelName } })).data;
     await this.gmail.users.threads.modify({
       userId: 'me',
       id: threadId,
-      requestBody: {
-        addLabelIds: [labelId, 'SPAM'],
-        removeLabelIds: ['INBOX']
-      }
+      requestBody: { addLabelIds: [label.id, 'SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
     });
-  }
-
-  async getAttachment(messageId, attachmentId) {
-    const res = await this.gmail.users.messages.attachments.get({
-      userId: 'me',
-      messageId: messageId,
-      id: attachmentId
-    });
-    return res.data;
   }
 }
