@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Gmail Cybersecurity Scanner",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Checks every Gmail message you open for spoofing, risky links and dangerous attachments, and shows why. No setup needed.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://safebrowsing.googleapis.com/*",
     "https://rdap.org/*"

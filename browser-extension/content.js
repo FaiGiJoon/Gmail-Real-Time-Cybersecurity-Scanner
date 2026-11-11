@@ -83,7 +83,24 @@
     if (html.length > MAX_SOURCE) throw new Error('This email is over 25 MB, too large to scan in the browser.');
     const pre = html.match(/<pre[^>]*id="?raw_message_text"?[^>]*>([\s\S]*?)<\/pre>/i) || html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
     if (!pre || pre[1].length < 20) throw new Error('Gmail did not return the original message (Show original).');
-    return decodeEntities(pre[1].replace(/<[^>]+>/g, ''));
+    // The email's own "<" arrive as &lt;, so any real tag here is Gmail's markup. Strip until stable.
+    // The result is only ever parsed as an email and shown through textContent, never used as HTML.
+    let text = pre[1];
+    for (let prev = null; prev !== text;) { prev = text; text = text.replace(/<[^>]*>/g, ''); }
+    return decodeEntities(text);
+  }
+
+  function remember(id, result) {
+    cache.set(id, result);
+    if (cache.size > 200) cache.delete(cache.keys().next().value);
+  }
+
+  async function scanById(id, threadId) {
+    if (cache.has(id)) return cache.get(id);
+    const raw = await fetchSource(id);
+    const result = await send({ type: 'scanRaw', raw, messageId: id, threadId: threadId || '' });
+    remember(id, result);
+    return result;
   }
 
   async function scan(msg) {
@@ -92,11 +109,8 @@
     render(msg.node);
     badge('scanning', 'Scanning this email…');
     try {
-      const raw = await fetchSource(msg.id);
-      const result = await send({ type: 'scanRaw', raw, messageId: msg.id, threadId: msg.threadId });
+      const result = await scanById(msg.id, msg.threadId);
       if (my !== seq) return;
-      cache.set(msg.id, result);
-      if (cache.size > 50) cache.delete(cache.keys().next().value);
       current = { key: msg.id, status: 'done', result, subject: msg.subject };
       badge(result.level, V.LEVELS[result.level].label + ' · safety ' + result.score + '/100');
     } catch (e) {
@@ -106,6 +120,61 @@
       badge('error', 'This email was not checked');
     }
     render(openMessage() ? openMessage().node : null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inbox scan: checks the newest message of each conversation shown in the list
+  // ---------------------------------------------------------------------------
+
+  const INBOX_MAX = 25;
+  let inbox = { status: 'none', items: [] }; // status: none | running | done
+  let inboxRun = 0;
+
+  /** Conversations visible in the mail list (inbox, search results, labels). */
+  function listRows() {
+    const seen = new Set();
+    const out = [];
+    for (const row of document.querySelectorAll('tr.zA')) {
+      if (!visible(row)) continue;
+      const idNode = row.querySelector('[data-legacy-last-message-id]');
+      const legacy = idNode ? idNode.getAttribute('data-legacy-last-message-id') : '';
+      if (!/^[0-9a-f]{6,20}$/i.test(legacy) || seen.has(legacy)) continue;
+      seen.add(legacy);
+      const sender = row.querySelector('span[email]');
+      const subject = row.querySelector('.bog');
+      const legacyThread = idNode.getAttribute('data-legacy-thread-id') || '';
+      out.push({
+        id: 'msg-f:' + BigInt('0x' + legacy).toString(),
+        legacyThread: /^[0-9a-f]{6,20}$/i.test(legacyThread) ? legacyThread : '',
+        from: sender ? (sender.getAttribute('name') || sender.textContent || sender.getAttribute('email') || '').trim() : '',
+        subject: subject ? subject.textContent.trim() : '(no subject)'
+      });
+      if (out.length >= INBOX_MAX) break;
+    }
+    return out;
+  }
+
+  async function scanInbox() {
+    const run = ++inboxRun;
+    const items = listRows().map((r) => ({ ...r, status: 'waiting' }));
+    inbox = { status: items.length ? 'running' : 'done', items };
+    let next = 0;
+    async function worker() {
+      while (run === inboxRun && next < items.length) {
+        const it = items[next++];
+        it.status = 'scanning';
+        try {
+          const r = await scanById(it.id, '');
+          it.status = 'done'; it.level = r.level; it.score = r.score;
+          it.top = V.realFindings(r).length ? V.realFindings(r)[0].title : '';
+          it.count = V.realFindings(r).length;
+        } catch (e) {
+          it.status = 'error'; it.error = String(e.message || e);
+        }
+      }
+    }
+    await Promise.all([worker(), worker(), worker()]);
+    if (run === inboxRun) inbox.status = 'done';
   }
 
   // ---------------------------------------------------------------------------
@@ -258,7 +327,24 @@
     if (!m) return false;
     if (m.type === 'getState') {
       const msg = openMessage();
-      sendResponse({ hasMessage: !!msg, status: current.status, result: current.result || null, error: current.error || '', subject: current.subject || (msg && msg.subject) || '' });
+      sendResponse({
+        hasMessage: !!msg, status: current.status, result: current.result || null, error: current.error || '',
+        subject: current.subject || (msg && msg.subject) || '',
+        listCount: msg ? 0 : listRows().length, inbox
+      });
+    } else if (m.type === 'scanInbox') {
+      scanInbox();
+      sendResponse({ started: true });
+    } else if (m.type === 'clearInbox') {
+      inboxRun++; inbox = { status: 'none', items: [] };
+      sendResponse({ cleared: true });
+    } else if (m.type === 'openThread') {
+      // Same as clicking the row: Gmail opens a conversation from "#<view>/<thread id>".
+      if (/^[0-9a-f]{6,20}$/i.test(m.legacyThread || '')) {
+        const view = (location.hash.replace(/^#/, '').split('?')[0] || 'inbox').replace(/\/[0-9a-f]{12,}$/i, '');
+        location.hash = '#' + view + '/' + m.legacyThread;
+      }
+      sendResponse({ opened: true });
     } else if (m.type === 'rescan') {
       const msg = openMessage();
       if (msg) { cache.delete(msg.id); dismissed = null; scan(msg); }
