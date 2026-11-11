@@ -3,10 +3,11 @@
  * All I/O is injected so the same code runs in the service worker and in node tests.
  */
 (function (root, factory) {
-  var api = factory(typeof module !== 'undefined' && module.exports ? require('./scanner-core.js') : root.ScannerCore);
+  var node = typeof module !== 'undefined' && module.exports;
+  var api = factory(node ? require('./scanner-core.js') : root.ScannerCore, node ? require('./mime.js') : root.Mime);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ScanEngine = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Core) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Core, Mime) {
   'use strict';
 
   var GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -17,6 +18,7 @@
   /**
    * @param {{fetch:Function, getToken:Function, getSettings:Function, now:Function}} env
    *   getToken(interactive) -> Promise<string>; getSettings() -> Promise<{keys:{}, config:{}}>
+   *   getToken is optional: without it only scanRaw() works and the Gmail API checks are skipped.
    */
   function createEngine(env) {
     var now = env.now || Date.now;
@@ -46,7 +48,9 @@
       var tasks = [];
 
       var addr = Core.parseAddress(msg.from).email;
-      if (addr) {
+      if (addr && !env.getToken) {
+        out.senderHistoryCount = null; // reported by the core as "First-time sender check" not checked
+      } else if (addr) {
         tasks.push(gmail('GET', '/messages', { q: 'from:' + addr + ' -in:trash', maxResults: 3 }).then(function (r) {
           out.senderHistoryCount = (r.messages || []).filter(function (m) { return m.id !== msg.id; }).length;
         }).catch(function () { out.senderHistoryCount = null; out.skipped.push('Sender history'); }));
@@ -97,7 +101,27 @@
       return Promise.all(tasks).then(function () { return out; });
     }
 
+    function finish(msg, settings, deep) {
+      return collect(msg, settings, !!deep).then(function (en) {
+        var res = Core.analyze(msg, en, settings.config);
+        res.threadId = msg.threadId;
+        res.subject = msg.subject;
+        res.deep = !!deep;
+        return res;
+      });
+    }
+
     return {
+      /**
+       * Scan a raw RFC 822 message (Gmail's "Show original" text). Needs no OAuth: the content
+       * script reads it from the Gmail tab the user is signed in to.
+       */
+      scanRaw: function (raw, ids) {
+        var msg = Core.fromGmailApi(Mime.toGmailApiMessage(raw, ids));
+        msg.attachments.forEach(function (a) { a.name = Core.decodeMimeWords(a.name); });
+        return env.getSettings().then(function (settings) { return finish(msg, settings, false); });
+      },
+
       scanMessage: function (id, deep) {
         return Promise.all([gmail('GET', '/messages/' + encodeURIComponent(id), { format: 'full' }), env.getSettings()]).then(function (r) {
           var msg = Core.fromGmailApi(r[0]);

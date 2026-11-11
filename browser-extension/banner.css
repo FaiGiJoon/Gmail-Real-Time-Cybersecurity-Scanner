@@ -1,0 +1,25 @@
+/* In-page banner shown above the open Gmail message. Lives in a shadow root. */
+:host { all: initial; display: block; }
+.gcs-banner {
+  margin: 8px 0 12px;
+  background: var(--gcs-bg);
+  border: 1px solid var(--gcs-border);
+  border-radius: var(--gcs-radius);
+  box-shadow: 0 1px 2px rgba(60, 64, 67, .12), 0 2px 6px rgba(60, 64, 67, .08);
+  overflow: hidden;
+}
+.gcs-enter { animation: gcs-in .25s ease-out; }
+.gcs-banner.gcs-green { border-color: color-mix(in srgb, var(--gcs-green) 35%, var(--gcs-border)); }
+.gcs-banner.gcs-yellow { border-color: color-mix(in srgb, var(--gcs-yellow) 45%, var(--gcs-border)); }
+.gcs-banner.gcs-red { border-color: var(--gcs-red); box-shadow: 0 0 0 1px var(--gcs-red), 0 2px 8px rgba(197, 34, 31, .18); }
+.gcs-bar { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; }
+.gcs-text { flex: 1; min-width: 0; }
+.gcs-text .gcs-sub { white-space: nowrap; }
+.gcs-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.gcs-body { padding: 0 14px 14px; display: none; }
+.gcs-open .gcs-body { display: block; }
+.gcs-foot { margin-top: 12px; font-size: 12px; color: var(--gcs-muted); }
+.gcs-floating { position: fixed; right: 20px; bottom: 20px; width: min(440px, calc(100vw - 40px)); z-index: 2147483000; margin: 0; max-height: 70vh; overflow: auto; }
+@keyframes gcs-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .gcs-enter { animation: none; } }
+@media print { :host { display: none; } }

@@ -4,6 +4,8 @@ const list = (v) => String(v || '').split(/[\s,;]+/).map((s) => s.trim().toLower
 const names = (v) => String(v || '').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean).slice(0, 50);
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.body.classList.add('gcs-dark');
+  el('welcome').hidden = !new URLSearchParams(location.search).has('welcome');
   const s = await chrome.storage.local.get(['SAFE_BROWSING_API_KEY', 'config']);
   const c = s.config || {};
   el('sb').value = s.SAFE_BROWSING_API_KEY || '';
@@ -16,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       SAFE_BROWSING_API_KEY: el('sb').value.trim(),
       config: { internalDomain: list(el('internal').value)[0] || '', vipNames: names(el('vip').value), allowDomains: list(el('allow').value), denyDomains: list(el('deny').value) }
     });
-    el('status').textContent = 'Saved.';
+    el('status').textContent = 'Saved. Open emails are re-checked on next open.';
     setTimeout(() => { el('status').textContent = ''; }, 2500);
   });
 });

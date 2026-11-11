@@ -1,32 +1,90 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Gmail Cybersecurity Scanner Settings</title>
+  <title>Gmail Cybersecurity Scanner · Settings</title>
+  <link rel="stylesheet" href="view.css">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
-    label { display: block; font-weight: bold; margin: 14px 0 4px; }
-    input[type="text"], textarea { width: 100%; padding: 8px; box-sizing: border-box; }
-    button { margin-top: 16px; padding: 10px 15px; background: #1a73e8; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
-    #status { margin-top: 10px; color: #188038; font-weight: bold; }
-    small { color: #5f6368; }
+    html, body { background: var(--gcs-surface); }
+    body { margin: 0; padding: 40px 20px; color-scheme: light dark; }
+    .wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    header { display: flex; align-items: center; gap: 12px; }
+    header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+    header p { margin: 2px 0 0; color: var(--gcs-muted); }
+    .card { background: var(--gcs-bg); border: 1px solid var(--gcs-border); border-radius: var(--gcs-radius); padding: 18px 20px; }
+    .card h2 { margin: 0 0 4px; font-size: 15px; }
+    .card > p { margin: 0 0 12px; color: var(--gcs-muted); font-size: 13px; }
+    .welcome { background: var(--gcs-green-bg); border-color: transparent; }
+    .welcome ol { margin: 8px 0 0; padding-left: 20px; }
+    label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+    label:first-of-type { margin-top: 4px; }
+    input[type="text"], input[type="password"] { width: 100%; height: 38px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--gcs-border); background: var(--gcs-bg); color: var(--gcs-text); font: 14px var(--gcs-font); }
+    input:focus { outline: 2px solid var(--gcs-accent); outline-offset: -1px; border-color: transparent; }
+    small { display: block; color: var(--gcs-muted); margin-top: 4px; }
+    .bar { display: flex; align-items: center; gap: 12px; position: sticky; bottom: 0; padding: 12px 0; }
+    #status { color: var(--gcs-green); font-weight: 600; }
+    ul.privacy { margin: 0; padding-left: 18px; font-size: 13px; }
+    ul.privacy li { margin-bottom: 4px; }
   </style>
 </head>
-<body>
-  <h2>Scanner settings</h2>
-  <label for="sb">Safe Browsing API key (optional)</label>
-  <input type="text" id="sb" autocomplete="off">
-  <small>Stored only in this browser. Links from scanned emails are sent to Google Safe Browsing when a key is set.</small>
-  <label for="internal">Your own domain</label>
-  <input type="text" id="internal" placeholder="example.com">
-  <label for="vip">VIP names (comma separated)</label>
-  <input type="text" id="vip">
-  <label for="allow">Trusted domains</label>
-  <input type="text" id="allow">
-  <label for="deny">Blocked domains</label>
-  <input type="text" id="deny">
-  <button id="save">Save</button>
-  <div id="status"></div>
+<body class="gcs-root">
+  <div class="wrap">
+    <header>
+      <img src="icons/icon48.png" alt="" width="40" height="40">
+      <div><h1>Gmail Cybersecurity Scanner</h1><p>Settings</p></div>
+    </header>
+
+    <section class="card welcome" id="welcome" hidden>
+      <h2>You're set up</h2>
+      <ol>
+        <li>Reload any Gmail tab that was already open.</li>
+        <li>Open an email. A safety banner appears above it, and the toolbar icon shows the verdict.</li>
+        <li>Optional: add a Safe Browsing key below for live link reputation checks.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Your organisation</h2>
+      <p>Helps spot people pretending to be your colleagues or bosses.</p>
+      <label for="internal">Your own email domain</label>
+      <input type="text" id="internal" placeholder="example.com" autocomplete="off">
+      <label for="vip">VIP names</label>
+      <input type="text" id="vip" placeholder="Jane Doe, John Smith" autocomplete="off">
+      <small>Comma separated. Mail using these names from outside your domain is flagged.</small>
+    </section>
+
+    <section class="card">
+      <h2>Sender lists</h2>
+      <p>Comma separated domains.</p>
+      <label for="allow">Trusted domains</label>
+      <input type="text" id="allow" placeholder="mybank.com, school.edu" autocomplete="off">
+      <label for="deny">Blocked domains</label>
+      <input type="text" id="deny" placeholder="spam-example.xyz" autocomplete="off">
+    </section>
+
+    <section class="card">
+      <h2>Link reputation (optional)</h2>
+      <p>Without a key, Safe Browsing is listed under "Not checked" in every result.</p>
+      <label for="sb">Google Safe Browsing API key</label>
+      <input type="password" id="sb" autocomplete="off" spellcheck="false">
+      <small>Stored only in this browser. When set, link URLs from scanned emails are sent to Google Safe Browsing.</small>
+    </section>
+
+    <section class="card">
+      <h2>Privacy</h2>
+      <ul class="privacy">
+        <li>The email is read from your open Gmail tab and checked inside this extension. It is not uploaded anywhere.</li>
+        <li>Sender and link domain names go to rdap.org to look up how old the domain is.</li>
+        <li>Link URLs go to Google Safe Browsing only if you set a key above.</li>
+        <li>Nothing else is stored except these settings.</li>
+      </ul>
+    </section>
+
+    <div class="bar">
+      <button id="save" class="gcs-btn gcs-btn-primary" type="button">Save settings</button>
+      <span id="status" role="status"></span>
+    </div>
+  </div>
   <script src="options.js"></script>
 </body>
 </html>

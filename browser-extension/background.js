@@ -1,17 +1,12 @@
 /**
  * Service worker. Classic (non-module) worker so it can importScripts the shared core.
  * Keeps no state in memory: MV3 workers are stopped after ~30s idle.
+ *
+ * The content script on mail.google.com reads the open email's original source from the page
+ * and sends it here. This worker runs the shared core on it, adds the optional network checks
+ * (Safe Browsing with your key, domain age through RDAP) and paints the toolbar badge.
  */
-importScripts('scanner-core.js', 'engine.js');
-
-function getToken(interactive) {
-  return new Promise(function (resolve, reject) {
-    chrome.identity.getAuthToken({ interactive: interactive !== false }, function (token) {
-      if (chrome.runtime.lastError || !token) reject(new Error((chrome.runtime.lastError && chrome.runtime.lastError.message) || 'No token'));
-      else resolve(token);
-    });
-  });
-}
+importScripts('scanner-core.js', 'mime.js', 'engine.js');
 
 function getSettings() {
   return chrome.storage.local.get(['SAFE_BROWSING_API_KEY', 'config']).then(function (s) {
@@ -19,23 +14,39 @@ function getSettings() {
   });
 }
 
-const engine = ScanEngine.createEngine({ fetch: fetch.bind(self), getToken: getToken, getSettings: getSettings });
+const engine = ScanEngine.createEngine({ fetch: fetch.bind(self), getSettings: getSettings });
+
+const BADGE = {
+  green: { text: 'OK', color: '#188038' },
+  yellow: { text: '!', color: '#e37400' },
+  red: { text: '!!', color: '#d93025' },
+  scanning: { text: '…', color: '#5f6368' },
+  error: { text: '?', color: '#5f6368' }
+};
+
+function badge(tabId, kind, title) {
+  if (tabId === undefined) return;
+  const b = kind && BADGE[kind];
+  chrome.action.setBadgeText({ tabId, text: b ? b.text : '' });
+  if (b) chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
+  chrome.action.setTitle({ tabId, title: title || 'Gmail Cybersecurity Scanner' });
+}
 
 const handlers = {
-  scan: (m) => engine.scanMessage(m.messageId, !!m.deep),
-  recent: () => engine.listRecent(10),
-  resolveThread: (m) => engine.newestInThread(m.threadId),
-  neutralize: (m) => engine.neutralize(m.threadId),
-  // The token cache can hold a revoked token; drop it so the next call re-authorizes.
-  signOut: () => getToken(false).then((t) => new Promise((r) => chrome.identity.removeCachedAuthToken({ token: t }, r)))
+  scanRaw: (m) => engine.scanRaw(m.raw, { id: m.messageId, threadId: m.threadId }),
+  badge: (m, sender) => badge(sender.tab && sender.tab.id, m.kind, m.title)
 };
 
 chrome.runtime.onMessage.addListener((m, sender, sendResponse) => {
   const h = handlers[m && m.type];
   if (!h) return false;
-  Promise.resolve().then(() => h(m)).then(
+  Promise.resolve().then(() => h(m, sender)).then(
     (data) => sendResponse({ ok: true, data }),
     (err) => sendResponse({ ok: false, error: String((err && err.message) || err) })
   );
   return true; // async response
+});
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') chrome.tabs.create({ url: 'options.html?welcome=1' });
 });

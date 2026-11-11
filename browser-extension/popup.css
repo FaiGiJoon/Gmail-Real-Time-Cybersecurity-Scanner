@@ -1,0 +1,34 @@
+html { background: var(--gcs-bg); }
+body { width: 380px; margin: 0; background: var(--gcs-bg); }
+@media (prefers-color-scheme: dark) { body { color-scheme: dark; } }
+
+.top { display: flex; align-items: center; gap: 10px; padding: 14px 12px 10px 16px; }
+.top h1 { flex: 1; margin: 0; font-size: 16px; font-weight: 600; }
+
+main { padding: 0 16px 14px; max-height: 470px; overflow: auto; }
+
+.hero { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--gcs-radius); background: var(--gcs-surface); margin-bottom: 12px; }
+.hero.gcs-green { background: var(--gcs-green-bg); }
+.hero.gcs-yellow { background: var(--gcs-yellow-bg); }
+.hero.gcs-red { background: var(--gcs-red-bg); }
+.hero .gcs-badge { background: var(--gcs-bg); }
+.hero-text { flex: 1; min-width: 0; }
+.hero-text .gcs-title { font-size: 17px; }
+.subject { font-size: 12px; color: var(--gcs-muted); margin: 0 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.empty { text-align: center; padding: 18px 8px 8px; }
+.empty .gcs-badge { width: 56px; height: 56px; border-radius: 18px; margin-bottom: 10px; }
+.empty h2 { font-size: 15px; margin: 0 0 4px; }
+.empty p { margin: 0 0 14px; color: var(--gcs-muted); }
+.error-text { color: var(--gcs-red); font-size: 13px; overflow-wrap: anywhere; }
+
+.buttons { display: flex; gap: 8px; margin-top: 12px; }
+
+.toggles { border-top: 1px solid var(--gcs-border); padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--gcs-border); transition: background .15s; }
+.track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--gcs-bg); transition: transform .15s; }
+.switch input:checked + .track { background: var(--gcs-accent); }
+.switch input:checked + .track::after { transform: translateX(14px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--gcs-accent); outline-offset: 2px; }

@@ -1,0 +1,106 @@
+/* Shared styles for the in-page banner (inside a shadow root) and the popup. */
+:host, .gcs-root {
+  --gcs-bg: #ffffff;
+  --gcs-surface: #f6f8fc;
+  --gcs-border: #dadce0;
+  --gcs-text: #1f1f1f;
+  --gcs-muted: #5e5e5e;
+  --gcs-green: #137333;
+  --gcs-green-bg: #e6f4ea;
+  --gcs-yellow: #b05a00;
+  --gcs-yellow-bg: #fef7e0;
+  --gcs-red: #c5221f;
+  --gcs-red-bg: #fce8e6;
+  --gcs-grey-bg: #f1f3f4;
+  --gcs-accent: #0b57d0;
+  --gcs-radius: 14px;
+  --gcs-font: "Google Sans", Roboto, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+}
+.gcs-dark {
+  --gcs-bg: #1f1f1f;
+  --gcs-surface: #2a2a2a;
+  --gcs-border: #444746;
+  --gcs-text: #e3e3e3;
+  --gcs-muted: #a8abaf;
+  --gcs-green: #6dd58c;
+  --gcs-green-bg: #0f3d1f;
+  --gcs-yellow: #fdd663;
+  --gcs-yellow-bg: #3d3000;
+  --gcs-red: #f2b8b5;
+  --gcs-red-bg: #4d1714;
+  --gcs-grey-bg: #303134;
+  --gcs-accent: #a8c7fa;
+}
+
+.gcs-root { font: 14px/1.45 var(--gcs-font); color: var(--gcs-text); }
+.gcs-root *, .gcs-root *::before, .gcs-root *::after { box-sizing: border-box; }
+
+/* Verdict badge (shield) */
+.gcs-badge { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; border-radius: 12px; }
+.gcs-badge.gcs-green { color: var(--gcs-green); background: var(--gcs-green-bg); }
+.gcs-badge.gcs-yellow { color: var(--gcs-yellow); background: var(--gcs-yellow-bg); }
+.gcs-badge.gcs-red { color: var(--gcs-red); background: var(--gcs-red-bg); }
+.gcs-badge.gcs-grey { color: var(--gcs-muted); background: var(--gcs-grey-bg); }
+
+/* Score ring */
+.gcs-ring { width: 44px; height: 44px; flex: none; transform: rotate(-90deg); }
+.gcs-ring-bg { fill: none; stroke: var(--gcs-border); stroke-width: 3.2; }
+.gcs-ring-fg { fill: none; stroke-width: 3.2; stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
+.gcs-ring.gcs-green .gcs-ring-fg { stroke: var(--gcs-green); }
+.gcs-ring.gcs-yellow .gcs-ring-fg { stroke: var(--gcs-yellow); }
+.gcs-ring.gcs-red .gcs-ring-fg { stroke: var(--gcs-red); }
+.gcs-ring-text { transform: rotate(90deg); transform-origin: 18px 18px; text-anchor: middle; dominant-baseline: central; font: 600 11px var(--gcs-font); fill: var(--gcs-text); }
+
+/* Text */
+.gcs-title { font-size: 15px; font-weight: 600; margin: 0; }
+.gcs-title.gcs-green { color: var(--gcs-green); }
+.gcs-title.gcs-yellow { color: var(--gcs-yellow); }
+.gcs-title.gcs-red { color: var(--gcs-red); }
+.gcs-sub { color: var(--gcs-muted); font-size: 13px; margin: 1px 0 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Buttons */
+.gcs-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid var(--gcs-border); background: transparent; color: var(--gcs-accent); font: 500 13px var(--gcs-font); cursor: pointer; white-space: nowrap; }
+.gcs-btn:hover { background: var(--gcs-surface); }
+.gcs-btn:focus-visible, .gcs-icon-btn:focus-visible { outline: 2px solid var(--gcs-accent); outline-offset: 2px; }
+.gcs-btn-primary { background: var(--gcs-accent); border-color: var(--gcs-accent); color: var(--gcs-bg); }
+.gcs-btn-primary:hover { background: var(--gcs-accent); filter: brightness(1.08); }
+.gcs-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; color: var(--gcs-muted); cursor: pointer; }
+.gcs-icon-btn:hover { background: var(--gcs-surface); color: var(--gcs-text); }
+.gcs-chevron svg { transition: transform .2s ease; }
+.gcs-open .gcs-chevron svg { transform: rotate(180deg); }
+
+/* Details */
+.gcs-details { display: flex; flex-direction: column; gap: 12px; }
+.gcs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.gcs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gcs-chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--gcs-grey-bg); color: var(--gcs-muted); }
+.gcs-chip b { font-weight: 600; }
+.gcs-chip-pass { background: var(--gcs-green-bg); color: var(--gcs-green); }
+.gcs-chip-fail { background: var(--gcs-red-bg); color: var(--gcs-red); }
+.gcs-facts { color: var(--gcs-muted); font-size: 12px; overflow-wrap: anywhere; }
+.gcs-empty { margin: 0; color: var(--gcs-muted); }
+
+.gcs-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gcs-finding { padding: 10px 12px; border-radius: 10px; background: var(--gcs-surface); border-left: 4px solid var(--gcs-border); }
+.gcs-sev-critical, .gcs-sev-high { border-left-color: var(--gcs-red); }
+.gcs-sev-medium { border-left-color: var(--gcs-yellow); }
+.gcs-sev-low { border-left-color: var(--gcs-muted); }
+.gcs-finding-head { display: flex; align-items: baseline; gap: 8px; }
+.gcs-sev { flex: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--gcs-muted); }
+.gcs-sev-critical .gcs-sev, .gcs-sev-high .gcs-sev { color: var(--gcs-red); }
+.gcs-sev-medium .gcs-sev { color: var(--gcs-yellow); }
+.gcs-finding-title { font-weight: 600; }
+.gcs-finding-detail { color: var(--gcs-muted); font-size: 13px; margin-top: 2px; }
+.gcs-evidence { display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; background: var(--gcs-bg); border: 1px solid var(--gcs-border); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gcs-text); overflow-wrap: anywhere; }
+
+.gcs-notchecked { border-radius: 10px; background: var(--gcs-yellow-bg); padding: 8px 12px; font-size: 13px; }
+.gcs-notchecked summary { cursor: pointer; font-weight: 600; color: var(--gcs-yellow); }
+.gcs-notchecked ul { margin: 6px 0 0; padding-left: 18px; color: var(--gcs-text); }
+
+/* Spinner */
+.gcs-spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--gcs-border); border-top-color: var(--gcs-accent); animation: gcs-spin .8s linear infinite; }
+@keyframes gcs-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .gcs-spinner { animation-duration: 2.4s; }
+  .gcs-ring-fg, .gcs-chevron svg { transition: none; }
+}

@@ -1,36 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Gmail Cybersecurity Scanner</title>
-  <style>
-    body { width: 340px; font: 13px Arial, sans-serif; margin: 10px; color: #202124; }
-    h3 { margin: 0 0 8px; }
-    #verdict { font-size: 18px; font-weight: bold; margin: 8px 0; }
-    .green { color: #188038; } .yellow { color: #b06000; } .red { color: #d93025; }
-    ul { padding-left: 18px; margin: 4px 0; }
-    li { margin-bottom: 6px; }
-    .sev { font-size: 11px; font-weight: bold; text-transform: uppercase; }
-    .detail { color: #5f6368; }
-    .notchecked { background: #fef7e0; padding: 6px; border-radius: 4px; margin-top: 8px; }
-    button { padding: 7px 10px; border: 0; border-radius: 4px; cursor: pointer; font-weight: bold; margin: 6px 6px 0 0; }
-    .primary { background: #1a73e8; color: #fff; } .danger { background: #d93025; color: #fff; }
-    .picker button { display: block; width: 100%; text-align: left; background: #f1f3f4; font-weight: normal; margin: 4px 0; }
-    #error { color: #d93025; }
-  </style>
+  <link rel="stylesheet" href="view.css">
+  <link rel="stylesheet" href="popup.css">
 </head>
-<body>
-  <h3>Gmail Security Audit</h3>
-  <div id="state">Starting...</div>
-  <div id="verdict"></div>
-  <ul id="findings"></ul>
-  <div id="notchecked" class="notchecked" hidden></div>
-  <div id="actions" hidden>
-    <button id="deep" class="primary">Deep scan</button>
-    <button id="neutralize" class="danger">Move to Spam</button>
-  </div>
-  <div id="picker" class="picker"></div>
-  <div id="error"></div>
+<body class="gcs-root">
+  <header class="top">
+    <img src="icons/icon48.png" alt="" width="24" height="24">
+    <h1>Email Security</h1>
+    <a id="settings" class="gcs-icon-btn" href="options.html" target="_blank" title="Settings" aria-label="Settings"></a>
+  </header>
+
+  <main id="main" aria-live="polite"></main>
+
+  <footer class="toggles">
+    <label class="switch"><input type="checkbox" id="autoScan"><span class="track" aria-hidden="true"></span>Scan emails automatically</label>
+    <label class="switch"><input type="checkbox" id="showBanner"><span class="track" aria-hidden="true"></span>Show banner in Gmail</label>
+  </footer>
+  <script src="view.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
