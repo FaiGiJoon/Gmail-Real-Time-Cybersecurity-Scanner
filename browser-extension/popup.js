@@ -30,10 +30,63 @@ function btn(label, iconName, onclick, primary) {
 const rescan = () => chrome.tabs.sendMessage(tab.id, { type: 'rescan' }).then(refresh).catch(refresh);
 const showInPage = () => chrome.tabs.sendMessage(tab.id, { type: 'showBanner' }).then(() => window.close()).catch(() => {});
 
+const ask = (type, extra) => chrome.tabs.sendMessage(tab.id, { type, ...(extra || {}) });
+const scanInbox = () => ask('scanInbox').then(refresh).catch(refresh);
+
+function inboxView(inbox) {
+  const items = inbox.items;
+  const done = items.filter((i) => i.status === 'done' || i.status === 'error').length;
+  const risky = items.filter((i) => i.level === 'red').length;
+  const careful = items.filter((i) => i.level === 'yellow').length;
+  const failed = items.filter((i) => i.status === 'error').length;
+  const running = inbox.status === 'running';
+  let title = running ? 'Scanning ' + done + ' of ' + items.length + '…' : items.length + ' emails checked';
+  let sub = running ? 'Keep this Gmail tab open.' : risky ? risky + ' likely dangerous' + (careful ? ', ' + careful + ' to be careful with' : '') : careful ? careful + ' to be careful with' : 'Nothing suspicious found.';
+  if (!running && failed) sub += ' ' + failed + ' could not be checked.';
+  const level = running ? 'grey' : risky ? 'red' : careful || failed ? 'yellow' : 'green';
+  // Worst first once finished; list order while running.
+  const rank = { red: 0, yellow: 1, undefined: 2, green: 3 };
+  const sorted = running ? items : items.slice().sort((a, b) => rank[a.level] - rank[b.level]);
+  return [
+    el('div', { class: 'hero gcs-' + level }, [
+      running ? el('span', { class: 'gcs-badge gcs-grey' }, [el('span', { class: 'gcs-spinner', role: 'status', 'aria-label': 'Scanning' })])
+        : V.levelIcon(document, level === 'grey' ? 'yellow' : level, 24),
+      el('div', { class: 'hero-text' }, [el('p', { class: 'gcs-title gcs-' + level, text: title }), el('p', { class: 'gcs-sub', text: sub })])
+    ]),
+    el('ul', { class: 'inbox' }, sorted.map((it) => {
+      const state = it.status === 'done' ? it.level : it.status === 'error' ? 'error' : 'wait';
+      const note = it.status === 'done' ? (it.count ? it.top + (it.count > 1 ? ' +' + (it.count - 1) : '') : 'Looks safe')
+        : it.status === 'error' ? 'Not checked: ' + it.error : it.status === 'scanning' ? 'Scanning…' : 'Waiting';
+      return el('li', {}, [el('button', {
+        class: 'inbox-row', type: 'button', disabled: !it.legacyThread, title: it.legacyThread ? 'Open this email' : '',
+        onclick: () => ask('openThread', { legacyThread: it.legacyThread }).then(() => window.close()).catch(() => {})
+      }, [
+        el('span', { class: 'dot dot-' + state, 'aria-hidden': 'true' }),
+        el('span', { class: 'inbox-text' }, [
+          el('span', { class: 'inbox-subject', text: it.subject }),
+          el('span', { class: 'inbox-note inbox-' + state, text: (it.from ? it.from + ' · ' : '') + note })
+        ]),
+        it.status === 'done' ? el('span', { class: 'inbox-score', text: String(it.score), title: 'Safety score out of 100' }) : null
+      ])]);
+    })),
+    running ? null : el('div', { class: 'buttons' }, [btn('Scan again', 'refresh', scanInbox), btn('Clear', null, () => ask('clearInbox').then(refresh))])
+  ];
+}
+
 function render(st) {
   clearTimeout(poll);
+  const inbox = st.inbox || { status: 'none', items: [] };
+  if (!st.hasMessage && inbox.status !== 'none' && inbox.items.length) {
+    if (inbox.status === 'running') poll = setTimeout(refresh, 600);
+    return show(...inboxView(inbox));
+  }
   if (!st.hasMessage && st.status === 'none') {
-    return show(empty('shield', 'Open an email', 'Open any message in Gmail and it is checked right away.'));
+    if (st.listCount) {
+      return show(empty('shield', 'Connected to Gmail', 'Open any email and it is checked right away, or scan the ' + st.listCount + ' newest emails in this list now.', [
+        btn('Scan inbox', 'shield', scanInbox, true)
+      ], 'green'));
+    }
+    return show(empty('shield', 'Connected to Gmail', 'Open any message and it is checked right away.', null, 'green'));
   }
   if (st.status === 'scanning') {
     poll = setTimeout(refresh, 500);
@@ -93,7 +146,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('settings').appendChild(V.icon(document, 'gear', 18));
   initToggles();
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !/^https:\/\/mail\.google\.com\//.test(tab.url || '')) {
+  // tab.url is only visible with the activeTab grant; the content script answering is the real test.
+  if (!tab || (tab.url && !/^https:\/\/mail\.google\.com\//.test(tab.url))) {
     tab = null;
     return show(empty('shield', 'Open Gmail', 'This scanner works inside Gmail. Open an email there to see its safety check.', [
       btn('Open Gmail', null, () => { chrome.tabs.create({ url: 'https://mail.google.com/' }); window.close(); }, true)

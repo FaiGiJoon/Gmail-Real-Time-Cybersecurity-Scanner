@@ -52,6 +52,7 @@ Works like any content-script extension: no Google Cloud project, no OAuth clien
 2. Click **Load unpacked** and pick the `browser-extension` folder.
 3. Reload any Gmail tab that was already open.
 4. Open an email. A banner above the message shows the verdict (Looks safe / Be careful / Likely dangerous) with a safety score; click the arrow for the findings. The toolbar icon shows the same verdict, and its popup has the details plus switches for auto-scan and the banner.
+5. In the mail list, click the toolbar icon and **Scan inbox** to check the newest message of up to 25 conversations shown, without opening them. Click a result to open that email.
 
 How it reads the email: the content script asks Gmail for the message's **Show original** source, using the tab you are already signed in to, and the service worker runs the shared core on it. The email itself is not uploaded anywhere. Settings (your domain, VIP names, trusted/blocked domains, optional Safe Browsing key) are in the extension's options page.
 
