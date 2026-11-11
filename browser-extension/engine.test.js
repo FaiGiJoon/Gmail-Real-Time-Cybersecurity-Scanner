@@ -72,17 +72,23 @@ test('neutralize only adds SPAM and never trashes', async () => {
   assert.ok(!calls[0].body.includes('TRASH'));
 });
 
-test('manifest is least-privilege and the worker is loadable', () => {
+test('manifest needs no OAuth and stays least-privilege', () => {
   const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  assert.deepStrictEqual(man.oauth2.scopes, ['https://www.googleapis.com/auth/gmail.modify']);
-  assert.ok(!man.host_permissions.some((h) => /vision|virustotal/.test(h)));
+  assert.strictEqual(man.oauth2, undefined, 'no OAuth client should be needed');
+  assert.deepStrictEqual(man.permissions, ['storage']);
+  assert.ok(!man.host_permissions.some((h) => /gmail\.googleapis|vision|virustotal/.test(h)));
+  assert.deepStrictEqual(man.content_scripts[0].matches, ['https://mail.google.com/*']);
   assert.notStrictEqual(man.background.type, 'module');
   const bg = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  assert.ok(bg.includes("importScripts('scanner-core.js', 'engine.js')"));
-  for (const f of ['popup.html', 'options.html', 'content.js', 'engine.js', 'scanner-core.js']) assert.ok(fs.existsSync(path.join(__dirname, f)), f);
+  assert.ok(bg.includes("importScripts('scanner-core.js', 'mime.js', 'engine.js')"));
+  const files = ['popup.html', 'options.html', 'mime.js', 'engine.js', 'scanner-core.js']
+    .concat(man.content_scripts[0].js, man.web_accessible_resources[0].resources);
+  for (const f of files) assert.ok(fs.existsSync(path.join(__dirname, f)), f);
 });
 
-test('popup renders email data via textContent only', () => {
-  const src = fs.readFileSync(path.join(__dirname, 'popup.js'), 'utf8');
-  assert.ok(!/innerHTML|insertAdjacentHTML|document\.write/.test(src));
+test('UI renders email data via textContent only', () => {
+  for (const f of ['popup.js', 'content.js', 'view.js', 'options.js']) {
+    const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+    assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|DOMParser/.test(src), f);
+  }
 });

@@ -1,104 +1,103 @@
-/** Popup controller. Renders with textContent only: email data is untrusted. */
+/** Popup controller. Shows the result for the email open in the active Gmail tab. Renders with textContent only. */
+const V = globalThis.ScanView;
 const $ = (id) => document.getElementById(id);
-let current = null; // {messageId, threadId}
+const el = (t, p, k) => V.el(document, t, p, k);
+const UI_DEFAULTS = { showBanner: true, autoScan: true };
+let tab = null;
+let poll = null;
 
-function send(msg) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(msg, (res) => {
-      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-      if (!res || !res.ok) return reject(new Error((res && res.error) || 'Unknown error'));
-      resolve(res.data);
-    });
-  });
+if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.body.classList.add('gcs-dark');
+
+function show(...nodes) {
+  const m = $('main');
+  while (m.firstChild) m.removeChild(m.firstChild);
+  nodes.forEach((n) => n && m.appendChild(n));
 }
 
-function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+function empty(iconNames, title, text, buttons, level) {
+  return el('div', { class: 'empty' }, [
+    el('span', { class: 'gcs-badge gcs-' + (level || 'grey') }, [V.icon(document, iconNames, 28)]),
+    el('h2', { text: title }),
+    el('p', { text }),
+    buttons ? el('div', { class: 'buttons', style: 'justify-content:center' }, buttons) : null
+  ]);
+}
 
-function render(r) {
-  $('state').textContent = (r.deep ? 'Deep scan' : 'Standard scan') + ': ' + (r.subject || '(no subject)');
-  const v = $('verdict');
-  v.textContent = r.status + ' (' + r.score + '/100)';
-  v.className = r.level;
-  const list = $('findings');
-  clear(list);
-  const real = r.findings.filter((f) => f.severity !== 'info');
-  if (!real.length) {
-    const li = document.createElement('li');
-    li.textContent = 'No problems found by the checks that ran.';
-    list.appendChild(li);
+function btn(label, iconName, onclick, primary) {
+  return el('button', { class: 'gcs-btn' + (primary ? ' gcs-btn-primary' : ''), type: 'button', onclick }, [iconName ? V.icon(document, iconName, 16) : null, label]);
+}
+
+const rescan = () => chrome.tabs.sendMessage(tab.id, { type: 'rescan' }).then(refresh).catch(refresh);
+const showInPage = () => chrome.tabs.sendMessage(tab.id, { type: 'showBanner' }).then(() => window.close()).catch(() => {});
+
+function render(st) {
+  clearTimeout(poll);
+  if (!st.hasMessage && st.status === 'none') {
+    return show(empty('shield', 'Open an email', 'Open any message in Gmail and it is checked right away.'));
   }
-  real.forEach((f) => {
-    const li = document.createElement('li');
-    const sev = document.createElement('span'); sev.className = 'sev ' + (f.severity === 'critical' || f.severity === 'high' ? 'red' : 'yellow'); sev.textContent = f.severity + ' ';
-    const t = document.createElement('b'); t.textContent = f.title;
-    const d = document.createElement('div'); d.className = 'detail'; d.textContent = f.detail + (f.evidence ? ' [' + f.evidence + ']' : '');
-    li.append(sev, t, d);
-    list.appendChild(li);
-  });
-  const nc = $('notchecked');
-  nc.hidden = !r.incomplete;
-  nc.textContent = r.incomplete ? 'Not checked: ' + r.skipped.join('; ') : '';
-  $('actions').hidden = false;
-  $('deep').hidden = !!r.deep;
+  if (st.status === 'scanning') {
+    poll = setTimeout(refresh, 500);
+    return show(el('div', { class: 'empty' }, [el('div', { class: 'gcs-spinner', style: 'margin:8px auto 14px', role: 'status', 'aria-label': 'Scanning' }), el('h2', { text: 'Scanning…' }), el('p', { text: st.subject || '' })]));
+  }
+  if (st.status === 'idle') {
+    return show(empty('shield', 'Not scanned yet', 'Automatic scanning is off.', [btn('Scan this email', 'shield', rescan, true)]));
+  }
+  if (st.status === 'error') {
+    return show(
+      empty(['shield', 'alert'], 'This email was NOT checked', 'The scan failed, so treat this email with care.', [btn('Try again', 'refresh', rescan, true)]),
+      el('p', { class: 'error-text', text: st.error })
+    );
+  }
+  const r = st.result;
+  show(
+    el('div', { class: 'hero gcs-' + r.level }, [
+      V.levelIcon(document, r.level, 24),
+      el('div', { class: 'hero-text' }, [
+        el('p', { class: 'gcs-title gcs-' + r.level, text: V.LEVELS[r.level].label }),
+        el('p', { class: 'gcs-sub', text: V.LEVELS[r.level].hint })
+      ]),
+      V.scoreRing(document, r.score, r.level)
+    ]),
+    st.subject ? el('p', { class: 'subject', text: st.subject, title: st.subject }) : null,
+    V.details(document, r),
+    el('div', { class: 'buttons' }, [btn('Scan again', 'refresh', rescan), btn('Show in Gmail', null, showInPage)])
+  );
 }
 
-async function scan(messageId, threadId, deep) {
-  $('error').textContent = '';
-  $('state').textContent = deep ? 'Running deep scan...' : 'Scanning...';
+async function refresh() {
   try {
-    const r = await send({ type: 'scan', messageId, deep });
-    current = { messageId, threadId: r.threadId || threadId };
-    $('picker').hidden = true;
-    render(r);
+    const st = await chrome.tabs.sendMessage(tab.id, { type: 'getState' });
+    render(st || { status: 'none' });
   } catch (e) {
-    // Never show a clean state after a failed scan.
-    $('verdict').textContent = '';
-    clear($('findings'));
-    $('state').textContent = 'Scan failed. This email was NOT checked.';
-    $('error').textContent = e.message;
+    show(empty('refresh', 'Reload Gmail', 'The scanner starts on Gmail tabs opened after it was installed. Reload this tab once.', [
+      btn('Reload tab', 'refresh', () => { chrome.tabs.reload(tab.id); window.close(); }, true)
+    ]));
   }
 }
 
-async function showRecent() {
-  try {
-    const items = await send({ type: 'recent' });
-    const p = $('picker');
-    clear(p);
-    const h = document.createElement('div'); h.textContent = 'Pick a message to scan:'; p.appendChild(h);
-    items.forEach((m) => {
-      const b = document.createElement('button');
-      b.textContent = m.from + ' - ' + m.snippet.slice(0, 60);
-      b.addEventListener('click', () => scan(m.id, m.threadId, false));
-      p.appendChild(b);
+async function initToggles() {
+  const s = await chrome.storage.local.get('ui');
+  const ui = { ...UI_DEFAULTS, ...(s.ui || {}) };
+  for (const k of Object.keys(UI_DEFAULTS)) {
+    $(k).checked = !!ui[k];
+    $(k).addEventListener('change', async () => {
+      const cur = { ...UI_DEFAULTS, ...((await chrome.storage.local.get('ui')).ui || {}) };
+      cur[k] = $(k).checked;
+      await chrome.storage.local.set({ ui: cur });
+      if (tab) setTimeout(refresh, 400);
     });
-    $('state').textContent = 'Could not detect the open message.';
-  } catch (e) {
-    $('state').textContent = 'Could not reach Gmail.';
-    $('error').textContent = e.message;
   }
-}
-
-async function detectOpenMessage() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !/^https:\/\/mail\.google\.com\//.test(tab.url || '')) return null;
-  try {
-    const info = await chrome.tabs.sendMessage(tab.id, { type: 'currentMessage' });
-    if (info && info.messageId) return info;
-    if (info && info.threadId) {
-      const id = await send({ type: 'resolveThread', threadId: info.threadId });
-      if (id) return { messageId: id, threadId: info.threadId };
-    }
-  } catch (e) { /* content script not present: fall back to the list */ }
-  return null;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  $('deep').addEventListener('click', () => current && scan(current.messageId, current.threadId, true));
-  $('neutralize').addEventListener('click', async () => {
-    if (!current || !confirm('Move this conversation to Spam and mark it read? Nothing is deleted.')) return;
-    try { await send({ type: 'neutralize', threadId: current.threadId }); $('state').textContent = 'Moved to Spam.'; $('actions').hidden = true; }
-    catch (e) { $('error').textContent = e.message; }
-  });
-  const open = await detectOpenMessage();
-  if (open) scan(open.messageId, open.threadId, false); else showRecent();
+  $('settings').appendChild(V.icon(document, 'gear', 18));
+  initToggles();
+  [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !/^https:\/\/mail\.google\.com\//.test(tab.url || '')) {
+    tab = null;
+    return show(empty('shield', 'Open Gmail', 'This scanner works inside Gmail. Open an email there to see its safety check.', [
+      btn('Open Gmail', null, () => { chrome.tabs.create({ url: 'https://mail.google.com/' }); window.close(); }, true)
+    ]));
+  }
+  refresh();
 });

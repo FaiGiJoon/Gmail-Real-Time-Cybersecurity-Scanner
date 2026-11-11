@@ -5,7 +5,7 @@ Scans the Gmail message you have open and shows a score with the reasons behind 
 | Component | Where it runs | Good for |
 | :-- | :-- | :-- |
 | Gmail add-on (Apps Script) | Side panel in Gmail | Daily use, redirect checks, trusted/blocked sender lists |
-| Chrome extension | Toolbar popup on mail.google.com | Quick scan of the open message |
+| Chrome extension | Banner above every email in Gmail, plus a toolbar popup | Zero-setup protection while you read mail |
 | CLI / MCP server | Terminal or Gemini CLI | Scanning recent mail, scripting, AI-assisted triage (read-only by default) |
 
 The engine lives in `core/scanner-core.js` and is copied into each component by `npm run sync-core`. Never edit the generated copies (`ScannerCore.gs`, `browser-extension/scanner-core.js`, `cli-extension/scanner-core.cjs`).
@@ -44,14 +44,18 @@ Reporting creates a draft addressed to reportphishing@apwg.org with the original
 
 If your OAuth consent screen is External and in Testing, Google expires the refresh token after 7 days. Move the project to your own Workspace domain (Internal) or re-authorize weekly.
 
-## Install: Chrome extension
+## Install: Chrome extension (no setup)
 
-1. In Google Cloud Console create an OAuth client of type **Chrome Extension**. It needs the extension ID, which comes from a stable key: generate a key pair, put the public key in `manifest.json` as `"key"`, load the folder unpacked, and read the ID on `chrome://extensions`.
-2. Replace `REPLACE_WITH_YOUR_CHROME_EXTENSION_OAUTH_CLIENT_ID` in `browser-extension/manifest.json` with the client id.
-3. Add yourself as a test user on the consent screen and enable the Gmail API for the project.
-4. Click the toolbar icon on an open email. If the open message cannot be detected (Gmail's page markup is not a public API), pick from the recent-message list instead.
+Works like any content-script extension: no Google Cloud project, no OAuth client, no sign-in.
 
-The extension cannot read redirect targets (browsers hide them), so it reports redirect chains as not checked.
+1. Open `chrome://extensions` and turn on **Developer mode** (top right).
+2. Click **Load unpacked** and pick the `browser-extension` folder.
+3. Reload any Gmail tab that was already open.
+4. Open an email. A banner above the message shows the verdict (Looks safe / Be careful / Likely dangerous) with a safety score; click the arrow for the findings. The toolbar icon shows the same verdict, and its popup has the details plus switches for auto-scan and the banner.
+
+How it reads the email: the content script asks Gmail for the message's **Show original** source, using the tab you are already signed in to, and the service worker runs the shared core on it. The email itself is not uploaded anywhere. Settings (your domain, VIP names, trusted/blocked domains, optional Safe Browsing key) are in the extension's options page.
+
+Limits: Gmail's page markup is not a public API, so if Google changes it the banner may fall back to a floating card or stop detecting the open message. Browsers hide redirect targets, so redirect chains and the first-time-sender check are listed as not checked. To move mail to Spam, use Gmail's own Report spam button.
 
 ## Install: CLI / MCP
 
