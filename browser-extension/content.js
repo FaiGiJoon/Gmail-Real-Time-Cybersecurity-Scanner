@@ -83,7 +83,11 @@
     if (html.length > MAX_SOURCE) throw new Error('This email is over 25 MB, too large to scan in the browser.');
     const pre = html.match(/<pre[^>]*id="?raw_message_text"?[^>]*>([\s\S]*?)<\/pre>/i) || html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
     if (!pre || pre[1].length < 20) throw new Error('Gmail did not return the original message (Show original).');
-    return decodeEntities(pre[1].replace(/<[^>]+>/g, ''));
+    // The email's own "<" arrive as &lt;, so any real tag here is Gmail's markup. Strip until stable.
+    // The result is only ever parsed as an email and shown through textContent, never used as HTML.
+    let text = pre[1];
+    for (let prev = null; prev !== text;) { prev = text; text = text.replace(/<[^>]*>/g, ''); }
+    return decodeEntities(text);
   }
 
   function remember(id, result) {
