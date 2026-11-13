@@ -14,7 +14,7 @@
 (() => {
   if (window.top !== window) return; // not inside Gmail's iframes
   const V = globalThis.ScanView;
-  const UI_DEFAULTS = { showBanner: true, autoScan: true };
+  const UI_DEFAULTS = { showBanner: true, autoScan: true, scanCount: 25, autoSpam: false };
   const MAX_SOURCE = 25 * 1024 * 1024;
 
   let ui = { ...UI_DEFAULTS };
@@ -126,9 +126,34 @@
   // Inbox scan: checks the newest message of each conversation shown in the list
   // ---------------------------------------------------------------------------
 
-  const INBOX_MAX = 25;
-  let inbox = { status: 'none', items: [] }; // status: none | running | done
+  const SCAN_MAX = 500;
+  const PAGE_MAX = 20;
+  // Gmail's own buttons, found by label (English and Dutch) because its class names are not stable.
+  const OLDER = ['[aria-label="Older"]', '[data-tooltip="Older"]', '[aria-label="Ouder"]', '[data-tooltip="Ouder"]'];
+  const SPAM = ['[aria-label="Report spam"]', '[data-tooltip="Report spam"]', '[aria-label="Spam melden"]', '[data-tooltip="Spam melden"]', '[act="9"]'];
+  // status: none | collecting | running | acting | done
+  let inbox = { status: 'none', items: [] };
   let inboxRun = 0;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function waitFor(fn, ms) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(150); }
+    return null;
+  }
+  function gmailButton(selectors) {
+    for (const sel of selectors) {
+      const b = [...document.querySelectorAll(sel)].find((n) => visible(n) && n.getAttribute('aria-disabled') !== 'true');
+      if (b) return b;
+    }
+    return null;
+  }
+  /** Gmail's buttons react to mouse down/up, not only click. */
+  function press(node) {
+    for (const t of ['mousedown', 'mouseup', 'click']) node.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+  }
+  const listView = () => (location.hash.replace(/^#/, '').split('?')[0] || 'inbox').replace(/\/p\d+$/, '');
+  const busy = () => ['collecting', 'running', 'acting'].includes(inbox.status);
 
   /** Conversations visible in the mail list (inbox, search results, labels). */
   function listRows() {
@@ -145,19 +170,53 @@
       const legacyThread = idNode.getAttribute('data-legacy-thread-id') || '';
       out.push({
         id: 'msg-f:' + BigInt('0x' + legacy).toString(),
+        legacy,
         legacyThread: /^[0-9a-f]{6,20}$/i.test(legacyThread) ? legacyThread : '',
         from: sender ? (sender.getAttribute('name') || sender.textContent || sender.getAttribute('email') || '').trim() : '',
         subject: subject ? subject.textContent.trim() : '(no subject)'
       });
-      if (out.length >= INBOX_MAX) break;
     }
     return out;
   }
 
-  async function scanInbox() {
+  /** Reads up to `want` conversations, pressing Gmail's "Older" arrow for more pages, then returns to where it started. */
+  async function collectRows(want, run) {
+    const startHash = location.hash;
+    const items = [];
+    const seen = new Set();
+    let pages = 0;
+    let note = '';
+    for (;;) {
+      const rows = listRows();
+      for (const r of rows) if (!seen.has(r.id) && items.length < want) { seen.add(r.id); items.push(r); }
+      inbox.found = items.length;
+      if (items.length >= want || run !== inboxRun) break;
+      if (++pages >= PAGE_MAX) { note = 'Stopped after ' + PAGE_MAX + ' pages.'; break; }
+      const older = gmailButton(OLDER);
+      if (!older) { if (pages > 1 || rows.length) note = items.length < want ? 'Only ' + items.length + ' emails were available in this list.' : ''; break; }
+      const first = rows.length ? rows[0].id : '';
+      press(older);
+      const moved = await waitFor(() => { const r = listRows(); return r.length && r[0].id !== first; }, 8000);
+      if (!moved) { note = 'Gmail did not load the next page, so only ' + items.length + ' emails were scanned.'; break; }
+    }
+    if (location.hash !== startHash) {
+      location.hash = startHash || '#inbox';
+      await waitFor(() => listRows().length, 5000);
+    }
+    return { items, note };
+  }
+
+  async function scanInbox(count) {
+    if (busy()) return;
     const run = ++inboxRun;
-    const items = listRows().map((r) => ({ ...r, status: 'waiting' }));
-    inbox = { status: items.length ? 'running' : 'done', items };
+    const want = Math.max(1, Math.min(SCAN_MAX, Number(count) || ui.scanCount || 25));
+    inbox = { status: 'collecting', items: [], wanted: want, found: 0, view: listView(), note: '' };
+    const got = await collectRows(want, run);
+    if (run !== inboxRun) return;
+    const items = got.items.map((r) => ({ ...r, status: 'waiting' }));
+    inbox.items = items;
+    inbox.note = got.note;
+    inbox.status = 'running';
     let next = 0;
     async function worker() {
       while (run === inboxRun && next < items.length) {
@@ -165,7 +224,7 @@
         it.status = 'scanning';
         try {
           const r = await scanById(it.id, '');
-          it.status = 'done'; it.level = r.level; it.score = r.score;
+          it.status = 'done'; it.level = r.level; it.score = r.score; it.trusted = !!r.allowListed;
           it.top = V.realFindings(r).length ? V.realFindings(r)[0].title : '';
           it.count = V.realFindings(r).length;
         } catch (e) {
@@ -174,7 +233,45 @@
       }
     }
     await Promise.all([worker(), worker(), worker()]);
-    if (run === inboxRun) inbox.status = 'done';
+    if (run !== inboxRun) return;
+    inbox.status = 'done';
+    // Optional rule, off by default: report what the scan called likely dangerous. Never trusted senders.
+    if (ui.autoSpam) {
+      const targets = items.filter((it) => it.level === 'red' && !it.trusted).map((it) => it.id);
+      if (targets.length) { inbox.auto = true; await reportSpam(targets); }
+    }
+  }
+
+  /**
+   * Reports conversations as spam by doing what you would do by hand: open the conversation, press
+   * Gmail's own Report spam button. One at a time, and only after checking the right email is open.
+   */
+  async function reportSpam(ids) {
+    if (busy()) return;
+    const run = ++inboxRun;
+    const want = new Set(ids);
+    const targets = inbox.items.filter((it) => want.has(it.id) && it.action !== 'spam');
+    if (!targets.length) return;
+    const back = '#' + (inbox.view || 'inbox');
+    targets.forEach((it) => { it.action = 'queued'; it.actionError = ''; });
+    inbox.status = 'acting';
+    for (const it of targets) {
+      if (run !== inboxRun) { if (it.action === 'queued') it.action = ''; continue; }
+      it.action = 'working';
+      const fail = (why) => { it.action = 'failed'; it.actionError = why; };
+      if (!it.legacyThread) { fail('Could not find this conversation in Gmail.'); continue; }
+      const isOpen = () => [...document.querySelectorAll('[data-legacy-message-id="' + it.legacy + '"]')].some(visible);
+      location.hash = '#' + (inbox.view || 'inbox') + '/' + it.legacyThread;
+      if (!(await waitFor(isOpen, 8000))) { fail('Gmail did not open this email.'); continue; }
+      const button = gmailButton(SPAM);
+      if (!button) { fail("Could not find Gmail's Report spam button."); continue; }
+      press(button);
+      if (await waitFor(() => !isOpen(), 6000)) { it.action = 'spam'; cache.delete(it.id); }
+      else fail('Gmail did not confirm the email was moved.');
+      await sleep(300);
+    }
+    if (location.hash !== back) { location.hash = back; await sleep(300); }
+    if (inbox.status === 'acting') inbox.status = 'done';
   }
 
   // ---------------------------------------------------------------------------
@@ -333,10 +430,21 @@
         listCount: msg ? 0 : listRows().length, inbox
       });
     } else if (m.type === 'scanInbox') {
-      scanInbox();
-      sendResponse({ started: true });
+      const ok = !busy();
+      if (ok) scanInbox(m.count);
+      sendResponse({ started: ok });
+    } else if (m.type === 'reportSpam') {
+      const ok = !busy() && Array.isArray(m.ids);
+      if (ok) reportSpam(m.ids.map(String).slice(0, SCAN_MAX));
+      sendResponse({ started: ok });
+    } else if (m.type === 'stopInbox') {
+      // Ends the current run after the step in progress; anything not yet handled is left alone.
+      inboxRun++;
+      inbox.items.forEach((it) => { if (it.status === 'waiting' || it.status === 'scanning') { it.status = 'error'; it.error = 'Stopped'; } if (it.action === 'queued') it.action = ''; });
+      if (inbox.status !== 'acting') inbox.status = inbox.items.length ? 'done' : 'none';
+      sendResponse({ stopped: true });
     } else if (m.type === 'clearInbox') {
-      inboxRun++; inbox = { status: 'none', items: [] };
+      if (!busy()) { inboxRun++; inbox = { status: 'none', items: [] }; }
       sendResponse({ cleared: true });
     } else if (m.type === 'openThread') {
       // Same as clicking the row: Gmail opens a conversation from "#<view>/<thread id>".

@@ -2,7 +2,10 @@
 const V = globalThis.ScanView;
 const $ = (id) => document.getElementById(id);
 const el = (t, p, k) => V.el(document, t, p, k);
-const UI_DEFAULTS = { showBanner: true, autoScan: true };
+const UI_DEFAULTS = { showBanner: true, autoScan: true, scanCount: 25, autoSpam: false };
+const COUNTS = [10, 25, 50, 100, 200, 500];
+let ui = { ...UI_DEFAULTS };
+let picked = null; // ids ticked in the results list; null = not chosen yet
 let tab = null;
 let poll = null;
 
@@ -31,60 +34,133 @@ const rescan = () => chrome.tabs.sendMessage(tab.id, { type: 'rescan' }).then(re
 const showInPage = () => chrome.tabs.sendMessage(tab.id, { type: 'showBanner' }).then(() => window.close()).catch(() => {});
 
 const ask = (type, extra) => chrome.tabs.sendMessage(tab.id, { type, ...(extra || {}) });
-const scanInbox = () => ask('scanInbox').then(refresh).catch(refresh);
+const scanInbox = () => { picked = null; return ask('scanInbox', { count: ui.scanCount }).then(refresh).catch(refresh); };
+
+async function saveUi(patch) {
+  ui = { ...UI_DEFAULTS, ...((await chrome.storage.local.get('ui')).ui || {}), ...patch };
+  await chrome.storage.local.set({ ui });
+}
+
+/** "Scan the newest [n] emails" and "Afterwards [do what]" controls. */
+function scanSetup() {
+  const count = el('select', { id: 'scanCount', onchange: (e) => saveUi({ scanCount: Number(e.target.value) }) },
+    COUNTS.map((n) => el('option', { value: n, selected: n === ui.scanCount, text: String(n) })));
+  const after = el('select', { id: 'autoSpam', onchange: (e) => saveUi({ autoSpam: e.target.value === 'spam' }).then(refresh) }, [
+    el('option', { value: 'show', selected: !ui.autoSpam, text: 'Show me the results' }),
+    el('option', { value: 'spam', selected: ui.autoSpam, text: 'Report dangerous ones as spam' })
+  ]);
+  return el('div', { class: 'setup' }, [
+    el('label', { class: 'field' }, [el('span', { text: 'Scan the newest' }), count, el('span', { text: 'emails' })]),
+    el('label', { class: 'field' }, [el('span', { text: 'Afterwards' }), after]),
+    ui.autoSpam ? el('p', { class: 'setup-note', text: 'Emails rated "Likely dangerous" are moved to Spam without asking. Trusted senders are never touched. You can undo it from the Spam folder.' }) : null,
+    ui.scanCount > 50 ? el('p', { class: 'setup-note', text: 'Larger scans page through your mail list in this tab. Leave the tab alone until it finishes.' }) : null
+  ]);
+}
 
 function inboxView(inbox) {
   const items = inbox.items;
+  const scanning = inbox.status === 'running';
+  const acting = inbox.status === 'acting';
   const done = items.filter((i) => i.status === 'done' || i.status === 'error').length;
-  const risky = items.filter((i) => i.level === 'red').length;
-  const careful = items.filter((i) => i.level === 'yellow').length;
+  const risky = items.filter((i) => i.level === 'red' && i.action !== 'spam').length;
+  const careful = items.filter((i) => i.level === 'yellow' && i.action !== 'spam').length;
   const failed = items.filter((i) => i.status === 'error').length;
-  const running = inbox.status === 'running';
-  let title = running ? 'Scanning ' + done + ' of ' + items.length + '…' : items.length + ' emails checked';
-  let sub = running ? 'Keep this Gmail tab open.' : risky ? risky + ' likely dangerous' + (careful ? ', ' + careful + ' to be careful with' : '') : careful ? careful + ' to be careful with' : 'Nothing suspicious found.';
-  if (!running && failed) sub += ' ' + failed + ' could not be checked.';
-  const level = running ? 'grey' : risky ? 'red' : careful || failed ? 'yellow' : 'green';
-  // Worst first once finished; list order while running.
+  const reported = items.filter((i) => i.action === 'spam').length;
+  const actFailed = items.filter((i) => i.action === 'failed').length;
+  const queue = items.filter((i) => i.action === 'queued' || i.action === 'working').length;
+
+  // Default ticks (the dangerous ones) are chosen once, when the scan has finished.
+  if (picked === null && !scanning) picked = new Set(items.filter((i) => i.level === 'red' && !i.trusted && i.action !== 'spam').map((i) => i.id));
+  const ticked = picked || new Set();
+  const canPick = (i) => !scanning && !acting && i.status === 'done' && i.action !== 'spam' && !!i.legacyThread;
+  const chosen = items.filter((i) => ticked.has(i.id) && canPick(i));
+
+  let title, sub, level;
+  if (scanning) { title = 'Scanning ' + done + ' of ' + items.length + '…'; sub = 'Keep this Gmail tab open.'; level = 'grey'; }
+  else if (acting) { title = 'Reporting spam… ' + queue + ' left'; sub = 'Opening each email and pressing Report spam. Leave this tab alone.'; level = 'grey'; }
+  else {
+    title = items.length + ' emails checked';
+    const parts = [];
+    if (risky) parts.push(risky + ' likely dangerous');
+    if (careful) parts.push(careful + ' to be careful with');
+    if (reported) parts.push(reported + ' reported as spam' + (inbox.auto ? ' automatically' : ''));
+    if (failed) parts.push(failed + ' not checked');
+    if (actFailed) parts.push(actFailed + ' could not be reported');
+    sub = parts.length ? parts.join(' · ') : 'Nothing suspicious found.';
+    level = risky ? 'red' : careful || failed || actFailed ? 'yellow' : 'green';
+  }
+
+  // Worst first once finished; list order while scanning.
   const rank = { red: 0, yellow: 1, undefined: 2, green: 3 };
-  const sorted = running ? items : items.slice().sort((a, b) => rank[a.level] - rank[b.level]);
+  const sorted = scanning ? items : items.slice().sort((a, b) => rank[a.level] - rank[b.level]);
+  const reportBtn = btn('Report ' + chosen.length + ' as spam', null, () => ask('reportSpam', { ids: chosen.map((i) => i.id) }).then(refresh).catch(refresh), true);
+  reportBtn.id = 'report';
+  reportBtn.disabled = !chosen.length;
+
   return [
     el('div', { class: 'hero gcs-' + level }, [
-      running ? el('span', { class: 'gcs-badge gcs-grey' }, [el('span', { class: 'gcs-spinner', role: 'status', 'aria-label': 'Scanning' })])
-        : V.levelIcon(document, level === 'grey' ? 'yellow' : level, 24),
-      el('div', { class: 'hero-text' }, [el('p', { class: 'gcs-title gcs-' + level, text: title }), el('p', { class: 'gcs-sub', text: sub })])
+      level === 'grey' ? el('span', { class: 'gcs-badge gcs-grey' }, [el('span', { class: 'gcs-spinner', role: 'status', 'aria-label': 'Working' })]) : V.levelIcon(document, level, 24),
+      el('div', { class: 'hero-text' }, [el('p', { class: 'gcs-title gcs-' + level, text: title }), el('p', { class: 'gcs-sub', text: sub })]),
+      scanning || acting ? btn('Stop', null, () => ask('stopInbox').then(refresh).catch(refresh)) : null
     ]),
+    inbox.note ? el('p', { class: 'setup-note', text: inbox.note }) : null,
     el('ul', { class: 'inbox' }, sorted.map((it) => {
-      const state = it.status === 'done' ? it.level : it.status === 'error' ? 'error' : 'wait';
-      const note = it.status === 'done' ? (it.count ? it.top + (it.count > 1 ? ' +' + (it.count - 1) : '') : 'Looks safe')
+      const state = it.action === 'spam' ? 'gone' : it.status === 'done' ? it.level : it.status === 'error' ? 'error' : 'wait';
+      const note = it.action === 'spam' ? 'Reported as spam'
+        : it.action === 'working' ? 'Reporting…' : it.action === 'queued' ? 'Waiting to report'
+        : it.action === 'failed' ? 'Not reported: ' + it.actionError
+        : it.status === 'done' ? (it.count ? it.top + (it.count > 1 ? ' +' + (it.count - 1) : '') : 'Looks safe')
         : it.status === 'error' ? 'Not checked: ' + it.error : it.status === 'scanning' ? 'Scanning…' : 'Waiting';
-      return el('li', {}, [el('button', {
-        class: 'inbox-row', type: 'button', disabled: !it.legacyThread, title: it.legacyThread ? 'Open this email' : '',
-        onclick: () => ask('openThread', { legacyThread: it.legacyThread }).then(() => window.close()).catch(() => {})
-      }, [
-        el('span', { class: 'dot dot-' + state, 'aria-hidden': 'true' }),
-        el('span', { class: 'inbox-text' }, [
-          el('span', { class: 'inbox-subject', text: it.subject }),
-          el('span', { class: 'inbox-note inbox-' + state, text: (it.from ? it.from + ' · ' : '') + note })
-        ]),
-        it.status === 'done' ? el('span', { class: 'inbox-score', text: String(it.score), title: 'Safety score out of 100' }) : null
-      ])]);
+      const tick = el('input', {
+        type: 'checkbox', class: 'pick', checked: ticked.has(it.id) && canPick(it), disabled: !canPick(it),
+        'aria-label': 'Select "' + it.subject + '" to report as spam',
+        onchange: (e) => { if (e.target.checked) ticked.add(it.id); else ticked.delete(it.id); render(lastState); }
+      });
+      return el('li', { class: 'inbox-item' + (it.action === 'spam' ? ' is-gone' : '') }, [
+        tick,
+        el('button', {
+          class: 'inbox-row', type: 'button', disabled: !it.legacyThread || it.action === 'spam' || acting, title: it.legacyThread ? 'Open this email' : '',
+          onclick: () => ask('openThread', { legacyThread: it.legacyThread }).then(() => window.close()).catch(() => {})
+        }, [
+          el('span', { class: 'dot dot-' + state, 'aria-hidden': 'true' }),
+          el('span', { class: 'inbox-text' }, [
+            el('span', { class: 'inbox-subject', text: it.subject }),
+            el('span', { class: 'inbox-note inbox-' + (it.action === 'failed' ? 'red' : state), text: (it.from ? it.from + ' · ' : '') + note })
+          ]),
+          it.status === 'done' && it.action !== 'spam' ? el('span', { class: 'inbox-score', text: String(it.score), title: 'Safety score out of 100' }) : null
+        ])
+      ]);
     })),
-    running ? null : el('div', { class: 'buttons' }, [btn('Scan again', 'refresh', scanInbox), btn('Clear', null, () => ask('clearInbox').then(refresh))])
+    scanning || acting ? null : el('div', { class: 'buttons' }, [reportBtn, btn('New scan', 'refresh', () => ask('clearInbox').then(() => { picked = null; refresh(); }))])
   ];
 }
 
+let lastState = null;
+
 function render(st) {
   clearTimeout(poll);
+  lastState = st;
   const inbox = st.inbox || { status: 'none', items: [] };
-  if (!st.hasMessage && inbox.status !== 'none' && inbox.items.length) {
-    if (inbox.status === 'running') poll = setTimeout(refresh, 600);
+  if (!st.hasMessage && inbox.status === 'collecting') {
+    poll = setTimeout(refresh, 500);
+    return show(el('div', { class: 'empty' }, [
+      el('div', { class: 'gcs-spinner', style: 'margin:8px auto 14px', role: 'status', 'aria-label': 'Working' }),
+      el('h2', { text: 'Finding emails… ' + (inbox.found || 0) + ' of ' + inbox.wanted }),
+      el('p', { text: 'Paging through your mail list. Leave this tab alone.' }),
+      el('div', { class: 'buttons', style: 'justify-content:center' }, [btn('Stop', null, () => ask('stopInbox').then(refresh).catch(refresh))])
+    ]));
+  }
+  if (inbox.status !== 'none' && inbox.items.length && (!st.hasMessage || inbox.status === 'acting')) {
+    if (inbox.status === 'running' || inbox.status === 'acting') poll = setTimeout(refresh, 600);
     return show(...inboxView(inbox));
   }
   if (!st.hasMessage && st.status === 'none') {
     if (st.listCount) {
-      return show(empty('shield', 'Connected to Gmail', 'Open any email and it is checked right away, or scan the ' + st.listCount + ' newest emails in this list now.', [
-        btn('Scan inbox', 'shield', scanInbox, true)
-      ], 'green'));
+      return show(
+        empty('shield', 'Connected to Gmail', 'Open any email and it is checked right away, or scan your mail list now.', null, 'green'),
+        scanSetup(),
+        el('div', { class: 'buttons', style: 'justify-content:center' }, [btn('Scan inbox', 'shield', scanInbox, true)])
+      );
     }
     return show(empty('shield', 'Connected to Gmail', 'Open any message and it is checked right away.', null, 'green'));
   }
@@ -129,14 +205,11 @@ async function refresh() {
 }
 
 async function initToggles() {
-  const s = await chrome.storage.local.get('ui');
-  const ui = { ...UI_DEFAULTS, ...(s.ui || {}) };
-  for (const k of Object.keys(UI_DEFAULTS)) {
+  ui = { ...UI_DEFAULTS, ...((await chrome.storage.local.get('ui')).ui || {}) };
+  for (const k of ['autoScan', 'showBanner']) {
     $(k).checked = !!ui[k];
     $(k).addEventListener('change', async () => {
-      const cur = { ...UI_DEFAULTS, ...((await chrome.storage.local.get('ui')).ui || {}) };
-      cur[k] = $(k).checked;
-      await chrome.storage.local.set({ ui: cur });
+      await saveUi({ [k]: $(k).checked });
       if (tab) setTimeout(refresh, 400);
     });
   }
@@ -144,7 +217,7 @@ async function initToggles() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   $('settings').appendChild(V.icon(document, 'gear', 18));
-  initToggles();
+  await initToggles();
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   // tab.url is only visible with the activeTab grant; the content script answering is the real test.
   if (!tab || (tab.url && !/^https:\/\/mail\.google\.com\//.test(tab.url))) {

@@ -52,11 +52,13 @@ Works like any content-script extension: no Google Cloud project, no OAuth clien
 2. Click **Load unpacked** and pick the `browser-extension` folder.
 3. Reload any Gmail tab that was already open.
 4. Open an email. A banner above the message shows the verdict (Looks safe / Be careful / Likely dangerous) with a safety score; click the arrow for the findings. The toolbar icon shows the same verdict, and its popup has the details plus switches for auto-scan and the banner.
-5. In the mail list, click the toolbar icon and **Scan inbox** to check the newest message of up to 25 conversations shown, without opening them. Click a result to open that email.
+5. In the mail list, click the toolbar icon, choose how many emails to scan (10 to 500) and press **Scan inbox**. It checks the newest message of each conversation without opening it; for more than one page it presses Gmail's "Older" arrow and then returns to where you were. Click a result to open that email.
+6. **Report spam**: results rated "Likely dangerous" are ticked. Change the ticks if you want and press **Report N as spam**. The extension opens each ticked conversation and presses Gmail's own Report spam button, one at a time, and shows which ones worked.
+7. **Automatic rule (off by default)**: set "Afterwards" to "Report dangerous ones as spam" and every inbox scan reports its "Likely dangerous" results without asking. Senders on your trusted list are never reported. Undo from Gmail's Spam folder.
 
 How it reads the email: the content script asks Gmail for the message's **Show original** source, using the tab you are already signed in to, and the service worker runs the shared core on it. The email itself is not uploaded anywhere. Settings (your domain, VIP names, trusted/blocked domains, optional Safe Browsing key) are in the extension's options page.
 
-Limits: Gmail's page markup is not a public API, so if Google changes it the banner may fall back to a floating card or stop detecting the open message. Browsers hide redirect targets, so redirect chains and the first-time-sender check are listed as not checked. To move mail to Spam, use Gmail's own Report spam button.
+Limits: Gmail's page markup is not a public API, so if Google changes it the banner may fall back to a floating card or stop detecting the open message. Browsers hide redirect targets, so redirect chains and the first-time-sender check are listed as not checked. Paging and Report spam find Gmail's buttons by their English or Dutch labels; in other languages, or if Google renames them, those steps stop with a message and change nothing.
 
 ## Install: CLI / MCP
 

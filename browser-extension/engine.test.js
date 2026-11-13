@@ -92,3 +92,11 @@ test('UI renders email data via textContent only', () => {
     assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|DOMParser/.test(src), f);
   }
 });
+
+test('automatic spam reporting is off by default and only uses Gmail\'s own button', () => {
+  const content = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const popup = fs.readFileSync(path.join(__dirname, 'popup.js'), 'utf8');
+  for (const src of [content, popup]) assert.match(src, /UI_DEFAULTS = \{[^}]*autoSpam: false/);
+  assert.match(content, /it\.level === 'red' && !it\.trusted/, 'auto rule must skip trusted senders and anything not red');
+  assert.ok(!/googleapis\.com\/gmail|\/modify|TRASH/.test(content), 'no Gmail API writes from the page');
+});
